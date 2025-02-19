@@ -24,34 +24,6 @@ class Config {
     ];
 }
 
-class Database {
-    private static $instance = null;
-    private $db;
-
-    private function __construct() {
-        $this->db = new Medoo([
-            'type' => 'mysql',
-            'host' => '10.10.90.231',
-            'database' => 'ebarimt3_db',
-            'username' => 'ebarimt_user',
-            'password' => 'Ebarimt_2022.',
-            'charset' => 'utf8mb4',
-            'port' => 3306
-        ]);
-    }
-
-    public static function getInstance() {
-        if (self::$instance === null) {
-            self::$instance = new self();
-        }
-        return self::$instance;
-    }
-
-    public function getConnection() {
-        return $this->db;
-    }
-}
-
 class AppLogger {
     private static $instance = null;
     private $logger;
@@ -62,12 +34,8 @@ class AppLogger {
             mkdir($logDir, 0777, true);
         }
 
-        $this->logger = new \Monolog\Logger('ebarimt');
-        $handler = new RotatingFileHandler(
-            $logDir . '/application.log',
-            10,
-            \Monolog\Logger::INFO
-        );
+        $this->logger = new Logger('ebarimt');
+        $handler = new RotatingFileHandler($logDir . '/application.log', 10, Logger::INFO);
         $this->logger->pushHandler($handler);
     }
 
@@ -80,6 +48,44 @@ class AppLogger {
 
     public function log($level, $message, array $context = []) {
         $this->logger->log($level, $message, $context);
+    }
+}
+
+class Database {
+    private static $instance = null;
+    private $db;
+    private $logger;
+
+    private function __construct() {
+        $this->logger = AppLogger::getInstance();
+
+        try {
+            $this->db = new Medoo([
+                'type' => 'mysql',
+                'host' => '10.10.90.231',
+                'database' => 'ebarimt3_db',
+                'username' => 'ebarimt_user',
+                'password' => 'Ebarimt_2022.',
+                'charset' => 'utf8mb4',
+                'port' => 3306
+            ]);
+
+            $this->logger->log(Logger::INFO, "MySQL connection established successfully.");
+        } catch (\Exception $e) {
+            $this->logger->log(Logger::ERROR, "MySQL connection failed: " . $e->getMessage());
+            throw $e;
+        }
+    }
+
+    public static function getInstance() {
+        if (self::$instance === null) {
+            self::$instance = new self();
+        }
+        return self::$instance;
+    }
+
+    public function getConnection() {
+        return $this->db;
     }
 }
 
