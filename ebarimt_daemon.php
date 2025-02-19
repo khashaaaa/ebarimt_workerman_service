@@ -62,7 +62,7 @@ class Database {
         try {
             $this->db = new Medoo([
                 'type' => 'mysql',
-                'host' => '10.10.90.231',
+                'host' => '10.10.90.234',
                 'database' => 'ebarimt3_db',
                 'username' => 'ebarimt_user',
                 'password' => 'Ebarimt_2022.',
