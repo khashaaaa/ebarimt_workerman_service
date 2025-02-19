@@ -1,3 +1,4 @@
 /vendor
 composer.lock
 workerman.log
+/ebarimt_log3
