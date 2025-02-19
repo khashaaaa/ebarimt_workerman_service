@@ -1,0 +1,15 @@
+{
+    "name": "khashaa/ebarimt_workerman_service",
+    "authors": [
+        {
+            "name": "khashaaaa",
+            "email": "forwardent01@gmail.com"
+        }
+    ],
+    "require": {
+        "workerman/workerman": "^5.1",
+        "catfan/medoo": "^2.1",
+        "monolog/monolog": "^3.8",
+        "guzzlehttp/guzzle": "^7.9"
+    }
+}
