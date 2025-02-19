@@ -30,13 +30,31 @@ class AppLogger {
 
     private function __construct() {
         $logDir = __DIR__ . '/ebarimt_log3';
-        if (!file_exists($logDir)) {
-            mkdir($logDir, 0777, true);
-        }
+        try {
+            if (!file_exists($logDir)) {
+                if (!mkdir($logDir, 0777, true)) {
+                    error_log("Failed to create log directory: " . $logDir);
+                }
+            }
 
-        $this->logger = new Logger('ebarimt');
-        $handler = new RotatingFileHandler($logDir . '/application.log', 10, Logger::INFO);
-        $this->logger->pushHandler($handler);
+            if (!is_writable($logDir)) {
+                error_log("Log directory is not writable: " . $logDir);
+            }
+
+            $this->logger = new Logger('ebarimt');
+            $handler = new RotatingFileHandler($logDir . '/application.log', 10, Logger::DEBUG);
+            $handler->setFormatter(new \Monolog\Formatter\LineFormatter(
+                "[%datetime%] %channel%.%level_name%: %message% %context% %extra%\n"
+            ));
+            $this->logger->pushHandler($handler);
+            
+            $streamHandler = new \Monolog\Handler\StreamHandler('php://stderr', Logger::DEBUG);
+            $this->logger->pushHandler($streamHandler);
+            
+            $this->logger->info('Logger initialized successfully');
+        } catch (\Exception $e) {
+            error_log("Logger initialization failed: " . $e->getMessage());
+        }
     }
 
     public static function getInstance() {
@@ -70,9 +88,48 @@ class Database {
                 'port' => 3306
             ]);
 
+            $this->db->query("SELECT 1")->fetch();
             $this->logger->log(Logger::INFO, "MySQL connection established successfully.");
+            
+            $this->initializeTables();
+            
         } catch (\Exception $e) {
             $this->logger->log(Logger::ERROR, "MySQL connection failed: " . $e->getMessage());
+            throw $e;
+        }
+    }
+
+    private function initializeTables() {
+        try {
+            $queries = [
+                "CREATE TABLE IF NOT EXISTS connection_info (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    port INT NOT NULL,
+                    merchant_in VARCHAR(255) NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )",
+                "CREATE TABLE IF NOT EXISTS category (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    bgf_code VARCHAR(255) NOT NULL,
+                    ebarimt_code VARCHAR(255) NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )",
+                "CREATE TABLE IF NOT EXISTS group_bill (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    bar_code VARCHAR(255) NOT NULL,
+                    group_tin VARCHAR(255) NOT NULL,
+                    taxProductCode VARCHAR(255) NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )"
+            ];
+
+            foreach ($queries as $query) {
+                $this->db->query($query);
+            }
+            
+            $this->logger->log(Logger::INFO, "Database tables initialized successfully.");
+        } catch (\Exception $e) {
+            $this->logger->log(Logger::ERROR, "Failed to initialize tables: " . $e->getMessage());
             throw $e;
         }
     }
@@ -497,6 +554,18 @@ class Router {
 
 $worker = new Worker('http://0.0.0.0:' . Config::$settings['port']);
 $worker->count = 4;
+
+$worker->onWorkerStart = function($worker) {
+    try {
+        $logger = AppLogger::getInstance();
+        $logger->log(Logger::INFO, "Worker started on port " . Config::$settings['port']);
+        
+        Database::getInstance();
+    } catch (\Exception $e) {
+        $logger = AppLogger::getInstance();
+        $logger->log(Logger::ERROR, "Worker start failed: " . $e->getMessage());
+    }
+};
 
 $router = new Router();
 $router->addRoute('GET', '/', [new MainController(), 'index']);
