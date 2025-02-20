@@ -31,11 +31,34 @@ function copyFolder($source, $destination)
     }
 }
 
+function updateIniFile($folderName)
+{
+    $iniFilePath = $folderName . DIRECTORY_SEPARATOR . 'posapi.ini';
+
+    if (!file_exists($iniFilePath)) {
+        echo "INI file not found in $folderName\n";
+        return;
+    }
+
+    $iniContent = file_get_contents($iniFilePath);
+
+    $iniContent = preg_replace('/name=vatps_\d{5}\.db/', 'name=vatps_' . $folderName . '.db', $iniContent);
+
+    $newPort = 9000 + (int)$folderName;
+
+    $iniContent = preg_replace('/port=\d{4}/', 'port=' . $newPort, $iniContent);
+
+    file_put_contents($iniFilePath, $iniContent);
+}
+
 for ($i = START_FOLDER; $i <= END_FOLDER; $i++) {
     $folderName = sprintf('%05d', $i);
     $destFolder = $folderName;
 
     copyFolder(SOURCE_FOLDER, $destFolder);
+
+    updateIniFile($folderName);
+
     echo "$folderName: completed\n";
 }
 
