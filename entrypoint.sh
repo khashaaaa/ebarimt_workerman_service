@@ -1,3 +1,5 @@
+#!/bin/sh
+
 /app/00001/PosService &
 /app/00002/PosService &
 /app/00003/PosService &
