@@ -186,7 +186,7 @@ class PutCustomController extends BaseController {
             return $this->json(['message' => 'Access denied'], 403);
         }
 
-        $action = $_GET['store'] ?? null;
+        $action = $request->get('store');
         if ($action === null) {
             return $this->json(['error' => 'Store parameter is required'], 400);
         }
