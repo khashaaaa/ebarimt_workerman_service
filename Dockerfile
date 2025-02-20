@@ -15,10 +15,18 @@ WORKDIR /app
 COPY . /app
 COPY entrypoint.sh /app
 
-RUN chmod +x /app/entrypoint.sh
+RUN chown -R root:root /app && \
+    chmod -R 755 /app && \
+    chmod +x /app/entrypoint.sh
 
 RUN for i in $(seq -f "%05g" 1 450); do \
-    if [ -f "/app/${i}/PosService" ]; then chmod +x /app/${i}/PosService; fi; \
+    echo "Checking /app/${i}/PosService"; \
+    if [ -f "/app/${i}/PosService" ]; then \
+        echo "Setting executable permission for /app/${i}/PosService"; \
+        chmod +x "/app/${i}/PosService"; \
+    else \
+        echo "/app/${i}/PosService does not exist"; \
+    fi; \
 done
 
 ENTRYPOINT ["/app/entrypoint.sh"]
