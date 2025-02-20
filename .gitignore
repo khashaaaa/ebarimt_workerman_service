@@ -2,7 +2,7 @@
 composer.lock
 workerman.log
 /ebarimt_log3
-000??/
-00[1-4]??/
-vatps_*.db
 /logs
+000??/
+00[1-9]??/
+vatps_*.db
