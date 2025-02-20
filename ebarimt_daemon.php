@@ -531,9 +531,13 @@ class GetInformationController extends BaseController {
         try {
             $info = $this->saveConnectionInfo($port);
             if ($info) {
-                return $this->json($info);
+                return new Response(
+                    200,
+                    ['Content-Type' => 'application/json'],
+                    json_encode($info)
+                );
             }
-            return $this->json(['error' => 'Info null'], 404);
+            return $this->json(['error' => 'Info null']);
         } catch (\Exception $e) {
             $this->appLogger->log(\Monolog\Logger::ERROR, 'Failed to get information', [
                 'error' => $e->getMessage(),
@@ -561,21 +565,26 @@ class GetInformationController extends BaseController {
                 $lastSentDate = \DateTime::createFromFormat('Y-m-d H:i:s', $info['lastSentDate']);
                 $operatorTin = $info['merchants'][0]['tin'] ?? null;
                 
+                $data = [
+                    'lottery_count' => $info['leftLotteries'] ?? 0,
+                    'last_sent_date' => $lastSentDate ? $lastSentDate->format('Y-m-d H:i:s') : null,
+                    'updated_time' => (new \DateTime())->format('H:i:s'),
+                    'pos_id' => $info['posId'] ?? 0,
+                    'pos_no' => $info['posNo'] ?? '',
+                    'merchant_in' => $operatorTin ?? '',
+                    'is_working' => true
+                ];
+
                 $exists = $this->db->count('connection_info', [
                     'port' => $port
                 ]);
 
                 if (!$exists) {
-                    $this->db->insert('connection_info', [
-                        'port' => $port,
-                        'merchant_in' => $operatorTin,
-                        'created_at' => date('Y-m-d H:i:s')
-                    ]);
+                    $data['port'] = $port;
+                    $this->db->insert('connection_info', $data);
                 } else {
                     $this->db->update('connection_info', 
-                        [
-                            'merchant_in' => $operatorTin,
-                        ],
+                        $data,
                         [
                             'port' => $port
                         ]
@@ -649,7 +658,7 @@ $worker->onWorkerStart = function($worker) {
 
 $router = new Router();
 $router->addRoute('GET', '/', [new MainController(), 'index']);
-$router->addRoute('GET', '/getInformation', [new GetInformationController(), 'handle']);
+$router->addRoute('GET', '/api/getInformation', [new GetInformationController(), 'handle']);
 $router->addRoute('POST', '/{district_code}/api/', [new PutCustomController(), 'handle']);
 
 $worker->onMessage = function(TcpConnection $connection, Request $request) use ($router) {
