@@ -1,10 +1,5 @@
 <?php
 
-use Workerman\Worker;
-use Workerman\Timer;
-
-require_once 'vendor/autoload.php';
-
 define('START_FOLDER', 1);
 define('END_FOLDER', 450);
 define('SOURCE_FOLDER', '00001');
@@ -20,8 +15,7 @@ function copyFolder($source, $destination)
         mkdir($destination, 0777, true);
     }
 
-    $dir = opendir($source);
-    while (($file = readdir($dir)) !== false) {
+    foreach (scandir($source) as $file) {
         if ($file === '.' || $file === '..') {
             continue;
         }
@@ -35,21 +29,14 @@ function copyFolder($source, $destination)
             copy($srcFile, $destFile);
         }
     }
-    closedir($dir);
 }
 
-$worker = new Worker();
-$worker->onWorkerStart = function () {
-    for ($i = START_FOLDER; $i <= END_FOLDER; $i++) {
-        $folderName = sprintf('%05d', $i);
-        $destFolder = $folderName;
+for ($i = START_FOLDER; $i <= END_FOLDER; $i++) {
+    $folderName = sprintf('%05d', $i);
+    $destFolder = $folderName;
 
-        copyFolder(SOURCE_FOLDER, $destFolder);
-        echo "$folderName: completed\n";
-    }
+    copyFolder(SOURCE_FOLDER, $destFolder);
+    echo "$folderName: completed\n";
+}
 
-    echo "All folders have been processed.\n";
-    Worker::stopAll();
-};
-
-Worker::runAll();
+echo "All folders have been processed.\n";
