@@ -519,37 +519,90 @@ class PutCustomController extends BaseController {
 
 class GetInformationController extends BaseController {
     public function handle(Request $request): Response {
+        $requestId = uniqid('req_', true);
+        $this->appLogger->log(\Monolog\Logger::INFO, 
+            "GetInformation Request", [
+                'request_id' => $requestId,
+                'path' => $request->path(),
+                'method' => $request->method()
+            ]
+        );
+
         if (!$this->checkIp($request)) {
+            $this->appLogger->log(\Monolog\Logger::WARNING, 
+                "Access denied", [
+                    'request_id' => $requestId,
+                    'ip' => $request->header('X-Real-IP') ?: $request->connection->getRemoteIp()
+                ]
+            );
             return $this->json(['message' => 'Access denied'], 403);
         }
 
         $port = $request->get('port');
         if (!$port) {
+            $this->appLogger->log(\Monolog\Logger::ERROR, 
+                "Missing port parameter", [
+                    'request_id' => $requestId
+                ]
+            );
             return $this->json(['error' => 'Port parameter is required'], 400);
         }
 
+        $this->appLogger->log(\Monolog\Logger::INFO, 
+            "Processing request", [
+                'request_id' => $requestId,
+                'port' => $port
+            ]
+        );
+
         try {
-            $info = $this->saveConnectionInfo($port);
+            $info = $this->saveConnectionInfo($port, $requestId);
             if ($info) {
+                $this->appLogger->log(\Monolog\Logger::INFO, 
+                    "Request completed successfully", [
+                        'request_id' => $requestId,
+                        'port' => $port,
+                        'response_size' => strlen(json_encode($info))
+                    ]
+                );
                 return new Response(
                     200,
                     ['Content-Type' => 'application/json'],
                     json_encode($info)
                 );
             }
+            
+            $this->appLogger->log(\Monolog\Logger::ERROR, 
+                "No info returned", [
+                    'request_id' => $requestId,
+                    'port' => $port
+                ]
+            );
             return $this->json(['error' => 'Info null']);
+            
         } catch (\Exception $e) {
-            $this->appLogger->log(\Monolog\Logger::ERROR, 'Failed to get information', [
-                'error' => $e->getMessage(),
-                'port' => $port
-            ]);
+            $this->appLogger->log(\Monolog\Logger::ERROR, 
+                'Failed to get information: ' . $e->getMessage(), [
+                    'request_id' => $requestId,
+                    'port' => $port,
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString()
+                ]
+            );
             return $this->json(['error' => $e->getMessage()], 500);
         }
     }
 
-    private function saveConnectionInfo(string $port): ?array {
+    private function saveConnectionInfo(string $port, string $requestId): ?array {
         try {
             $url = str_replace('12345', $port, Config::$settings['docker_url']) . 'rest/info';
+            
+            $this->appLogger->log(\Monolog\Logger::INFO, 
+                "Fetching info from docker service", [
+                    'request_id' => $requestId,
+                    'url' => $url
+                ]
+            );
             
             $client = new \GuzzleHttp\Client();
             $response = $client->get($url, [
@@ -560,6 +613,14 @@ class GetInformationController extends BaseController {
             ]);
 
             $info = json_decode($response->getBody(), true);
+            
+            $this->appLogger->log(\Monolog\Logger::DEBUG, 
+                "Received response from docker service", [
+                    'request_id' => $requestId,
+                    'status_code' => $response->getStatusCode(),
+                    'response_size' => strlen($response->getBody())
+                ]
+            );
             
             if (isset($info['lastSentDate']) && $info['lastSentDate'] !== null) {
                 $lastSentDate = \DateTime::createFromFormat('Y-m-d H:i:s', $info['lastSentDate']);
@@ -575,14 +636,36 @@ class GetInformationController extends BaseController {
                     'is_working' => true
                 ];
 
+                $this->appLogger->log(\Monolog\Logger::DEBUG, 
+                    "Preparing database update", [
+                        'request_id' => $requestId,
+                        'port' => $port,
+                        'data' => array_merge($data, ['port' => $port])
+                    ]
+                );
+
                 $exists = $this->db->count('connection_info', [
                     'port' => $port
                 ]);
 
                 if (!$exists) {
+                    $this->appLogger->log(\Monolog\Logger::INFO, 
+                        "Creating new connection_info record", [
+                            'request_id' => $requestId,
+                            'port' => $port
+                        ]
+                    );
+                    
                     $data['port'] = $port;
                     $this->db->insert('connection_info', $data);
                 } else {
+                    $this->appLogger->log(\Monolog\Logger::INFO, 
+                        "Updating existing connection_info record", [
+                            'request_id' => $requestId,
+                            'port' => $port
+                        ]
+                    );
+                    
                     $this->db->update('connection_info', 
                         $data,
                         [
@@ -591,16 +674,26 @@ class GetInformationController extends BaseController {
                     );
                 }
                 
-                $this->appLogger->log(\Monolog\Logger::INFO, 'Connection info saved', [
-                    'port' => $port,
-                    'merchant_tin' => $operatorTin
-                ]);
+                $this->appLogger->log(\Monolog\Logger::INFO, 
+                    'Connection info saved successfully', [
+                        'request_id' => $requestId,
+                        'port' => $port,
+                        'merchant_tin' => $operatorTin
+                    ]
+                );
             }
 
             return $info;
 
         } catch (\Exception $e) {
-            $this->appLogger->log(\Monolog\Logger::ERROR, "Error saving connection info: " . $e->getMessage());
+            $this->appLogger->log(\Monolog\Logger::ERROR, 
+                "Error saving connection info: " . $e->getMessage(), [
+                    'request_id' => $requestId,
+                    'port' => $port,
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString()
+                ]
+            );
             return null;
         }
     }

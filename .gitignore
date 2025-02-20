@@ -5,3 +5,4 @@ workerman.log
 000??/
 00[1-4]??/
 vatps_*.db
+/logs
