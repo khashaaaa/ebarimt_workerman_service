@@ -27,44 +27,43 @@ class Config {
 class AppLogger {
     private static $instance = null;
     private $logger;
+    private $requestId;
 
     private function __construct() {
         $logDir = __DIR__ . '/ebarimt_log3';
-        try {
-            if (!file_exists($logDir)) {
-                if (!mkdir($logDir, 0777, true)) {
-                    error_log("Failed to create log directory: " . $logDir);
-                }
-            }
-
-            if (!is_writable($logDir)) {
-                error_log("Log directory is not writable: " . $logDir);
-            }
-
-            $this->logger = new Logger('ebarimt');
-            $handler = new RotatingFileHandler($logDir . '/application.log', 10, Logger::DEBUG);
-            $handler->setFormatter(new \Monolog\Formatter\LineFormatter(
-                "[%datetime%] %channel%.%level_name%: %message% %context% %extra%\n"
-            ));
-            $this->logger->pushHandler($handler);
-            
-            $streamHandler = new \Monolog\Handler\StreamHandler('php://stderr', Logger::DEBUG);
-            $this->logger->pushHandler($streamHandler);
-            
-            $this->logger->info('Logger initialized successfully');
-        } catch (\Exception $e) {
-            error_log("Logger initialization failed: " . $e->getMessage());
+        
+        if (!is_dir($logDir) && !mkdir($logDir, 0755, true)) {
+            throw new \RuntimeException("Failed to create log directory: $logDir");
         }
+
+        $this->logger = new Logger('ebarimt');
+        $handler = new RotatingFileHandler(
+            "$logDir/application.log",
+            10,
+            Logger::DEBUG
+        );
+        
+        $processor = function ($record) {
+            $record['extra']['request_id'] = $this->requestId;
+            return $record;
+        };
+        
+        $this->logger->pushProcessor($processor);
+        $this->logger->pushHandler($handler);
     }
 
-    public static function getInstance() {
+    public static function getInstance(): self {
         if (self::$instance === null) {
             self::$instance = new self();
         }
         return self::$instance;
     }
 
-    public function log($level, $message, array $context = []) {
+    public function setRequestId(string $requestId): void {
+        $this->requestId = $requestId;
+    }
+
+    public function log($level, $message, array $context = []): void {
         $this->logger->log($level, $message, $context);
     }
 }
@@ -468,7 +467,7 @@ class PutCustomController extends BaseController {
     private function fetchMerchantName(string $merchantTin, int $port): string {
         try {
             $client = new \GuzzleHttp\Client();
-            $response = $client->get("http://10.10.90.233/api/getInformation?port={$port}");
+            $response = $client->get("http://10.10.90.234/api/getInformation?port={$port}");
             $data = json_decode($response->getBody(), true);
             
             if (isset($data['merchants'])) {
@@ -696,7 +695,7 @@ class Router {
 }
 
 $worker = new Worker('http://0.0.0.0:' . Config::$settings['port']);
-$worker->count = 4;
+$worker->count = 24;
 
 $worker->onWorkerStart = function($worker) {
     try {
