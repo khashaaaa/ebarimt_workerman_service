@@ -539,7 +539,7 @@ class GetInformationController extends BaseController {
         }
 
         $port = $request->get('port');
-        if (!$port) {
+        if (empty($port)) {
             $this->appLogger->log(\Monolog\Logger::ERROR, 
                 "Missing port parameter", [
                     'request_id' => $requestId
@@ -561,8 +561,7 @@ class GetInformationController extends BaseController {
                 $this->appLogger->log(\Monolog\Logger::INFO, 
                     "Request completed successfully", [
                         'request_id' => $requestId,
-                        'port' => $port,
-                        'response_size' => strlen(json_encode($info))
+                        'port' => $port
                     ]
                 );
                 return new Response(
@@ -614,14 +613,6 @@ class GetInformationController extends BaseController {
 
             $info = json_decode($response->getBody(), true);
             
-            $this->appLogger->log(\Monolog\Logger::DEBUG, 
-                "Received response from docker service", [
-                    'request_id' => $requestId,
-                    'status_code' => $response->getStatusCode(),
-                    'response_size' => strlen($response->getBody())
-                ]
-            );
-            
             if (isset($info['lastSentDate']) && $info['lastSentDate'] !== null) {
                 $lastSentDate = \DateTime::createFromFormat('Y-m-d H:i:s', $info['lastSentDate']);
                 $operatorTin = $info['merchants'][0]['tin'] ?? null;
@@ -636,36 +627,14 @@ class GetInformationController extends BaseController {
                     'is_working' => true
                 ];
 
-                $this->appLogger->log(\Monolog\Logger::DEBUG, 
-                    "Preparing database update", [
-                        'request_id' => $requestId,
-                        'port' => $port,
-                        'data' => array_merge($data, ['port' => $port])
-                    ]
-                );
-
                 $exists = $this->db->count('connection_info', [
                     'port' => $port
                 ]);
 
                 if (!$exists) {
-                    $this->appLogger->log(\Monolog\Logger::INFO, 
-                        "Creating new connection_info record", [
-                            'request_id' => $requestId,
-                            'port' => $port
-                        ]
-                    );
-                    
                     $data['port'] = $port;
                     $this->db->insert('connection_info', $data);
                 } else {
-                    $this->appLogger->log(\Monolog\Logger::INFO, 
-                        "Updating existing connection_info record", [
-                            'request_id' => $requestId,
-                            'port' => $port
-                        ]
-                    );
-                    
                     $this->db->update('connection_info', 
                         $data,
                         [
@@ -673,14 +642,6 @@ class GetInformationController extends BaseController {
                         ]
                     );
                 }
-                
-                $this->appLogger->log(\Monolog\Logger::INFO, 
-                    'Connection info saved successfully', [
-                        'request_id' => $requestId,
-                        'port' => $port,
-                        'merchant_tin' => $operatorTin
-                    ]
-                );
             }
 
             return $info;
@@ -690,8 +651,7 @@ class GetInformationController extends BaseController {
                 "Error saving connection info: " . $e->getMessage(), [
                     'request_id' => $requestId,
                     'port' => $port,
-                    'error' => $e->getMessage(),
-                    'trace' => $e->getTraceAsString()
+                    'error' => $e->getMessage()
                 ]
             );
             return null;
