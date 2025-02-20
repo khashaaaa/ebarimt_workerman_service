@@ -17,6 +17,8 @@ COPY entrypoint.sh /app
 
 RUN chmod +x /app/entrypoint.sh
 
-RUN for i in $(seq -f "%05g" 1 450); do chmod +x /app/${i}/PosService; done
+RUN for i in $(seq -f "%05g" 1 450); do \
+    if [ -f "/app/${i}/PosService" ]; then chmod +x /app/${i}/PosService; fi; \
+done
 
 ENTRYPOINT ["/app/entrypoint.sh"]
