@@ -220,7 +220,7 @@ class PutCustomController extends BaseController {
             ]);
 
             $responseData = json_decode($response->getBody(), true);
-            $this->logger->log(Logger::INFO, 'Ebarimt response', ['response' => $responseData]);
+            $this->appLogger->log(\Monolog\Logger::INFO, 'Ebarimt response', ['response' => $responseData]);
 
             return $this->json([
                 'transID' => $data['transID'] ?? '',
@@ -231,7 +231,7 @@ class PutCustomController extends BaseController {
                 'success' => $response->getStatusCode() === 200
             ]);
         } catch (\Exception $e) {
-            $this->logger->log(Logger::ERROR, 'Ebarimt generation failed', ['error' => $e->getMessage()]);
+            $this->appLogger->log(\Monolog\Logger::ERROR, 'Ebarimt generation failed', ['error' => $e->getMessage()]);
             return $this->json(['error' => $e->getMessage()], 500);
         }
     }
@@ -270,7 +270,7 @@ class PutCustomController extends BaseController {
 
             return $this->json(['message' => 'Receipt deleted successfully']);
         } catch (\Exception $e) {
-            $this->logger->log(Logger::ERROR, 'Return bill failed', ['error' => $e->getMessage()]);
+            $this->appLogger->log(\Monolog\Logger::ERROR, 'Return bill failed', ['error' => $e->getMessage()]);
             return $this->json(['error' => $e->getMessage()], 500);
         }
     }
@@ -460,9 +460,10 @@ class PutCustomController extends BaseController {
             return $result ?: Config::$settings['company_merchant_tin'];
         } catch (\Exception $e) {
             $this->appLogger->log(\Monolog\Logger::ERROR, 'Database access failed: ' . $e->getMessage());
-            return '77100185651';
+            return '6215900';
         }
     }
+
 
     private function fetchMerchantName(string $merchantTin, int $port): string {
         try {
