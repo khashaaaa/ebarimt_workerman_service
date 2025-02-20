@@ -517,6 +517,86 @@ class PutCustomController extends BaseController {
     }
 }
 
+class GetInformationController extends BaseController {
+    public function handle(Request $request): Response {
+        if (!$this->checkIp($request)) {
+            return $this->json(['message' => 'Access denied'], 403);
+        }
+
+        $port = $request->get('port');
+        if (!$port) {
+            return $this->json(['error' => 'Port parameter is required'], 400);
+        }
+
+        try {
+            $info = $this->saveConnectionInfo($port);
+            if ($info) {
+                return $this->json($info);
+            }
+            return $this->json(['error' => 'Info null'], 404);
+        } catch (\Exception $e) {
+            $this->appLogger->log(\Monolog\Logger::ERROR, 'Failed to get information', [
+                'error' => $e->getMessage(),
+                'port' => $port
+            ]);
+            return $this->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+    private function saveConnectionInfo(string $port): ?array {
+        try {
+            $url = str_replace('12345', $port, Config::$settings['docker_url']) . 'rest/info';
+            
+            $client = new \GuzzleHttp\Client();
+            $response = $client->get($url, [
+                'headers' => [
+                    'Content-Type' => 'application/json;charset=utf-8'
+                ],
+                'timeout' => Config::$settings['request_timeout']
+            ]);
+
+            $info = json_decode($response->getBody(), true);
+            
+            if (isset($info['lastSentDate']) && $info['lastSentDate'] !== null) {
+                $lastSentDate = \DateTime::createFromFormat('Y-m-d H:i:s', $info['lastSentDate']);
+                $operatorTin = $info['merchants'][0]['tin'] ?? null;
+                
+                $exists = $this->db->count('connection_info', [
+                    'port' => $port
+                ]);
+
+                if (!$exists) {
+                    $this->db->insert('connection_info', [
+                        'port' => $port,
+                        'merchant_in' => $operatorTin,
+                        'created_at' => date('Y-m-d H:i:s')
+                    ]);
+                } else {
+                    $this->db->update('connection_info', 
+                        [
+                            'merchant_in' => $operatorTin,
+                        ],
+                        [
+                            'port' => $port
+                        ]
+                    );
+                }
+                
+                $this->appLogger->log(\Monolog\Logger::INFO, 'Connection info saved', [
+                    'port' => $port,
+                    'merchant_tin' => $operatorTin
+                ]);
+            }
+
+            return $info;
+
+        } catch (\Exception $e) {
+            $this->appLogger->log(\Monolog\Logger::ERROR, "Error saving connection info: " . $e->getMessage());
+            return null;
+        }
+    }
+}
+
 class Router {
     private $routes = [];
 
@@ -569,6 +649,7 @@ $worker->onWorkerStart = function($worker) {
 
 $router = new Router();
 $router->addRoute('GET', '/', [new MainController(), 'index']);
+$router->addRoute('GET', '/getInformation', [new GetInformationController(), 'handle']);
 $router->addRoute('POST', '/{district_code}/api/', [new PutCustomController(), 'handle']);
 
 $worker->onMessage = function(TcpConnection $connection, Request $request) use ($router) {
