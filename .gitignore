@@ -6,3 +6,5 @@ workerman.log
 000??/
 00[1-9]??/
 vatps_*.db
+.Dockerfile.swp
+workerman.ebarimt_daemon.php.pid
