@@ -276,18 +276,23 @@ class PutCustomController extends BaseController {
 
     private function prepareData(string $districtCode, array $originalData, int $port): array {
         try {
-            $receiptType = ($originalData['billType'] ?? '') === '1' ? 'B2C_RECEIPT' : 'B2B_RECEIPT';
+            $billType = $originalData['billType'] ?? '';
+            $receiptType = match($billType) {
+                '1' => 'B2C_RECEIPT',
+                '3' => 'B2B_RECEIPT',
+                default => 'B2B_RECEIPT'
+            };
+    
             $merchantTin = $this->fetchMerchantTin($port);
             $merchantName = $this->fetchMerchantName($merchantTin, $port);
-
-            if (strlen($districtCode) === 4) {
-                $formattedDistrictCode = $districtCode;
-                $branchNo = substr($districtCode, 2);
-            } else {
-                $formattedDistrictCode = $districtCode . '01';
-                $branchNo = $districtCode;
-            }
-
+    
+            $formattedDistrictCode = strlen($districtCode) === 4 
+                ? $districtCode 
+                : $districtCode . '01';
+            $branchNo = strlen($districtCode) === 4 
+                ? substr($districtCode, 2) 
+                : $districtCode;
+    
             $customerNo = $originalData['customerNo'] ?? '';
             $customerTin = '';
             if ($customerNo) {
@@ -297,157 +302,103 @@ class PutCustomController extends BaseController {
                         'timeout' => Config::$settings['request_timeout']
                     ]);
                     $result = json_decode($response->getBody(), true);
-                    $customerTin = $result['data'] ?? '';
+                    $customerTin = $result['data'] ?? $customerNo;
                 } catch (\Exception $e) {
                     $this->appLogger->log(\Monolog\Logger::ERROR, "Failed to fetch TIN for customerNo {$customerNo}: " . $e->getMessage());
+                    $customerTin = $customerNo;
                 }
             }
-
-            $totalOriginalAmount = 0;
-            foreach ($originalData['stocks'] ?? [] as $stock) {
-                $totalOriginalAmount += (float)($stock['totalAmount'] ?? 0);
-            }
-
-            $groupBills = $this->db->select('group_bill', [
-                'bar_code',
-                'group_tin',
-                'taxProductCode'
-            ]);
-            $groupBillMap = [];
-            foreach ($groupBills as $gb) {
-                $groupBillMap[$gb['bar_code']] = $gb;
-            }
-
+    
             $receipts = [];
             foreach ($originalData['stocks'] ?? [] as $stock) {
                 $totalAmount = (float)($stock['totalAmount'] ?? 0);
                 $cityTax = (float)($stock['cityTax'] ?? 0);
-
-                $groupBill = $groupBillMap[$stock['barCode']] ?? [];
-                $taxProductCode = (string)($groupBill['taxProductCode'] ?? '');
-
-                $taxType = $totalAmount > 0 ? 'VAT_ABLE' : 'VAT_ZERO';
-                $vatAmount = 0;
-                $cityTaxAmount = 0;
-
-                if ($groupBill) {
-                    $taxType = 'VAT_ZERO';
-                    $taxProductCode = '447';
-                } elseif ($taxType === 'VAT_ZERO') {
-                    $taxProductCode = '447';
-                }
-
-                if ($taxType !== 'VAT_ZERO') {
-                    if ($cityTax > 0) {
-                        $vatAmount = $totalAmount / 11.2;
-                        $cityTaxAmount = $vatAmount * 0.2;
-                    } else {
-                        $vatAmount = $totalAmount / 11;
-                    }
-                }
-
-                $itemMerchantTin = $groupBill['group_tin'] ?? $merchantTin;
-
+                
+                $taxType = 'VAT_ABLE';
+                $vatAmount = $totalAmount > 0 ? ($cityTax > 0 ? $totalAmount / 11.2 : $totalAmount / 11) : 0;
+                $cityTaxAmount = $cityTax > 0 ? $vatAmount * 0.2 : 0;
+    
+                $barCode = $stock['barCode'] ?? '';
+                $barCodeType = strlen($barCode) === 13 ? 'GS1' : 'UNDEFINED';
+    
                 $item = [
                     'name' => $stock['name'] ?? '',
-                    'taxProductCode' => $taxProductCode,
-                    'barCode' => $stock['barCode'] ?? '',
-                    'barCodeType' => in_array($stock['barCode'] ?? '', ['6900456387254', '6757990902668']) 
-                        ? 'UNDEFINED' 
-                        : (strlen($stock['barCode'] ?? '') === 13 ? 'GS1' : 'UNDEFINED'),
+                    'taxProductCode' => $this->fetchTaxProductCode($stock['code'] ?? ''),
+                    'barCode' => $barCode,
+                    'barCodeType' => $barCodeType,
                     'classificationCode' => $this->fetchClassificationCode($stock['code'] ?? ''),
                     'measureUnit' => $stock['measureUnit'] ?? '',
-                    'qty' => (int)((float)($stock['qty'] ?? 0)),
+                    'qty' => (int)((float)($stock['qty'] ?? 1)),
                     'unitPrice' => (float)($stock['unitPrice'] ?? 0),
                     'totalAmount' => $totalAmount,
-                    'totalVAT' => $vatAmount,
-                    'totalCityTax' => $cityTaxAmount,
-                    'taxType' => 'VAT_ABLE'
+                    'totalVAT' => round($vatAmount, 2),
+                    'totalCityTax' => round($cityTaxAmount, 2),
+                    'taxType' => $taxType
                 ];
-
-                $merchantSubName = $this->fetchSubMerchantName($itemMerchantTin, $port);
-
-                $existingReceiptKey = null;
-                foreach ($receipts as $key => $receipt) {
-                    if ($receipt['merchantTin'] === $itemMerchantTin) {
-                        $existingReceiptKey = $key;
-                        break;
-                    }
-                }
-
-                if ($existingReceiptKey !== null) {
-                    $receipts[$existingReceiptKey]['items'][] = $item;
-                    $receipts[$existingReceiptKey]['totalAmount'] += $totalAmount;
-                    $receipts[$existingReceiptKey]['totalVAT'] += $vatAmount;
-                    $receipts[$existingReceiptKey]['totalCityTax'] += $cityTaxAmount;
-                } else {
-                    $receipts[] = [
-                        'totalAmount' => $totalAmount,
-                        'taxType' => 'VAT_ABLE',
-                        'merchantTin' => $itemMerchantTin,
-                        'merchantSubName' => $merchantSubName,
-                        'totalVAT' => $vatAmount,
-                        'totalCityTax' => $cityTaxAmount,
-                        'items' => [$item]
-                    ];
-                }
+    
+                $receipts = [[
+                    'totalAmount' => $totalAmount,
+                    'taxType' => $taxType,
+                    'merchantTin' => $merchantTin,
+                    'merchantName' => $merchantName,
+                    'totalVAT' => round($vatAmount, 2),
+                    'totalCityTax' => round($cityTaxAmount, 2),
+                    'items' => [$item]
+                ]];
             }
-
-            $totalVat = 0;
-            $totalCityTax = 0;
-            $totalAmount = 0;
-            foreach ($receipts as $receipt) {
-                $totalVat += $receipt['totalVAT'];
-                $totalCityTax += $receipt['totalCityTax'];
-                $totalAmount += $receipt['totalAmount'];
-            }
-
+    
+            $totalAmount = array_sum(array_column($receipts, 'totalAmount'));
+            $totalVat = array_sum(array_column($receipts, 'totalVAT'));
+            $totalCityTax = array_sum(array_column($receipts, 'totalCityTax'));
+    
             $result = [
                 'totalAmount' => $totalAmount,
-                'totalVAT' => $totalVat,
-                'totalCityTax' => $totalCityTax,
+                'totalVAT' => round($totalVat, 2),
+                'totalCityTax' => round($totalCityTax, 2),
                 'districtCode' => $formattedDistrictCode,
                 'merchantTin' => $merchantTin,
                 'merchantName' => $merchantName,
                 'branchNo' => $branchNo,
-                'customerTin' => $customerTin ?: ($originalData['customerNo'] ?? ''),
+                'customerTin' => $customerTin,
                 'type' => $receiptType,
                 'receipts' => $receipts,
                 'payments' => []
             ];
-
+    
             $nonCashAmount = (float)($originalData['nonCashAmount'] ?? 0);
             $cashAmount = (float)($originalData['cashAmount'] ?? 0);
-
-            if ($nonCashAmount > 0 && $cashAmount > 0) {
+    
+            if ($nonCashAmount > 0) {
                 $result['payments'][] = [
                     'status' => 'PAID',
                     'code' => 'PAYMENT_CARD',
-                    'paidAmount' => $nonCashAmount
-                ];
-                $result['payments'][] = [
-                    'status' => 'PAID',
-                    'code' => 'CASH',
-                    'paidAmount' => $cashAmount
-                ];
-            } elseif ($nonCashAmount > 0) {
-                $result['payments'][] = [
-                    'status' => 'PAID',
-                    'code' => 'PAYMENT_CARD',
-                    'paidAmount' => $nonCashAmount
-                ];
-            } elseif ($cashAmount > 0) {
-                $result['payments'][] = [
-                    'status' => 'PAID',
-                    'code' => 'CASH',
-                    'paidAmount' => $cashAmount
+                    'paidAmount' => round($nonCashAmount, 2)
                 ];
             }
-
+            if ($cashAmount > 0) {
+                $result['payments'][] = [
+                    'status' => 'PAID',
+                    'code' => 'CASH',
+                    'paidAmount' => round($cashAmount, 2)
+                ];
+            }
+    
             return $result;
         } catch (\Exception $e) {
             $this->appLogger->log(\Monolog\Logger::ERROR, 'Error preparing data: ' . $e->getMessage());
             throw $e;
+        }
+    }
+    
+    private function fetchTaxProductCode(string $code): string {
+        try {
+            $result = $this->db->get('tax_products', 'code', [
+                'item_code' => $code
+            ]);
+            return $result ?: '447';
+        } catch (\Exception $e) {
+            $this->appLogger->log(\Monolog\Logger::ERROR, 'Failed to fetch tax product code: ' . $e->getMessage());
+            return '447';
         }
     }
 
