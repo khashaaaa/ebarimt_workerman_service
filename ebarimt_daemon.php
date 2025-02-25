@@ -101,24 +101,28 @@ class Database {
     private function initializeTables() {
         try {
             $queries = [
-                "CREATE TABLE IF NOT EXISTS connection_info (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    port INT NOT NULL,
-                    merchant_in VARCHAR(255) NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                "CREATE TABLE connection_info (
+                    port INT NOT NULL DEFAULT 1,
+                    lottery_count INT NOT NULL DEFAULT 0,
+                    is_working BOOLEAN NOT NULL DEFAULT FALSE,
+                    last_sent_date DATETIME NOT NULL DEFAULT NOW(),
+                    pos_id INT NOT NULL DEFAULT 0,
+                    pos_no VARCHAR(255) NOT NULL DEFAULT '45',
+                    updated_time DATETIME NOT NULL DEFAULT NOW(),
+                    merchant_in VARCHAR(255) NOT NULL DEFAULT ''
                 )",
-                "CREATE TABLE IF NOT EXISTS category (
+                "CREATE TABLE category (
                     id INT AUTO_INCREMENT PRIMARY KEY,
-                    bgf_code VARCHAR(255) NOT NULL,
-                    ebarimt_code VARCHAR(255) NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    bgf_code VARCHAR(255) NOT NULL UNIQUE,
+                    ebarimt_code VARCHAR(255) NOT NULL DEFAULT '24',
+                    company_reg VARCHAR(255) NOT NULL DEFAULT '',
+                    percent FLOAT NOT NULL DEFAULT 0.0
                 )",
-                "CREATE TABLE IF NOT EXISTS group_bill (
+                "CREATE TABLE group_bill (
                     id INT AUTO_INCREMENT PRIMARY KEY,
-                    bar_code VARCHAR(255) NOT NULL,
-                    group_tin VARCHAR(255) NOT NULL,
-                    taxProductCode VARCHAR(255) NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    bar_code VARCHAR(255) NULL,
+                    group_tin VARCHAR(255) NULL,
+                    taxProductCode VARCHAR(255) NULL
                 )"
             ];
 
@@ -325,8 +329,8 @@ class PutCustomController extends BaseController {
                 $item = [
                     'name' => $stock['name'] ?? '',
                     #'taxProductCode' => $this->fetchTaxProductCode($stock['code'] ?? ''),
-		    'taxProductCode' => '',
-		    'barCode' => $barCode,
+                    'taxProductCode' => '',
+                    'barCode' => $barCode,
                     'barCodeType' => $barCodeType,
                     'classificationCode' => $this->fetchClassificationCode($stock['code'] ?? ''),
                     'measureUnit' => $stock['measureUnit'] ?? '',
