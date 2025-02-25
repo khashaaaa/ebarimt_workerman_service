@@ -486,12 +486,12 @@ class PutCustomController extends BaseController {
                 }
                 
                 $item = [
-                    'name' => (string)$stock['name'] ?? '',
+                    'name' => (string)($stock['name'] ?? ''),
                     'taxProductCode' => (string)$taxProductCode,
                     'barCode' => (string)$barCode,
                     'barCodeType' => (string)$barCodeType,
                     'classificationCode' => (string)$this->fetchClassificationCode($stock['code'] ?? ''),
-                    'measureUnit' => (string)$stock['measureUnit'] ?? '',
+                    'measureUnit' => (string)($stock['measureUnit'] ?? ''),
                     'qty' => (int)((float)($stock['qty'] ?? 1)),
                     'unitPrice' => (float)($stock['unitPrice'] ?? 0),
                     'totalAmount' => (float)$totalAmount,
@@ -506,7 +506,7 @@ class PutCustomController extends BaseController {
                 
                 if (!isset($merchantItems[$itemMerchantTin])) {
                     $merchantItems[$itemMerchantTin] = [
-                        'items' => [$item],
+                        'items' => [],
                         'totalAmount' => 0,
                         'totalVAT' => 0,
                         'totalCityTax' => 0,
@@ -523,7 +523,7 @@ class PutCustomController extends BaseController {
             $receipts = [];
             foreach ($merchantItems as $tin => $data) {
                 $receipts[] = [
-                    'totalAmount' => $data['totalAmount'],
+                    'totalAmount' => (float)$data['totalAmount'],
                     'taxType' => 'VAT_ABLE',
                     'merchantTin' => !empty($merchantTin) ? (string)$merchantTin : Config::$settings['company_merchant_tin'],
                     'merchantSubName' => $data['merchantSubName'],
