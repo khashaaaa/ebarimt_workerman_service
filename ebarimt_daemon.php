@@ -424,7 +424,7 @@ class PutCustomController extends BaseController {
     private function fetchMerchantName(string $merchantTin, int $port): string {
         try {
             $client = new \GuzzleHttp\Client();
-            $response = $client->get("http://10.10.90.234/api/getInformation?port={$port}");
+            $response = $client->get("http://10.10.90.234:8888/api/getInformation?port={$port}");
             $data = json_decode($response->getBody(), true);
             
             if (isset($data['merchants'])) {
@@ -444,7 +444,7 @@ class PutCustomController extends BaseController {
     private function fetchSubMerchantName(string $merchantTin, int $port): string {
         try {
             $client = new \GuzzleHttp\Client();
-            $response = $client->get("http://10.10.90.234/api/getInformation?port={$port}");
+            $response = $client->get("http://10.10.90.234:8888/api/getInformation?port={$port}");
             $data = json_decode($response->getBody(), true);
             
             if (isset($data['merchants'][0]['customers'])) {
