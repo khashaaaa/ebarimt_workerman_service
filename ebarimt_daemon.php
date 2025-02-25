@@ -233,7 +233,7 @@ class PutCustomController extends BaseController {
                 'qrData' => $responseData['qrData'] ?? '',
                 'success' => $response->getStatusCode() === 200
             ]);
-            $this->appLogger->log(Logger::DEBUG, 'Request Payload', ['payload' => json_encode($preparedData)]);
+            $this->appLogger->log(Logger::DEBUG, 'Request Payload', ['payload' => json_encode($preparedData, JSON_PRETTY_PRINT)]);
         } catch (\Exception $e) {
             $this->appLogger->log(\Monolog\Logger::ERROR, 'Ebarimt generation failed', ['error' => $e->getMessage()]);
             return $this->json(['error' => $e->getMessage()], 500);
