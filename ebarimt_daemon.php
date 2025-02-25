@@ -479,18 +479,18 @@ class PutCustomController extends BaseController {
                 }
                 
                 $item = [
-                    'name' => $stock['name'] ?? '',
-                    'taxProductCode' => $taxProductCode,
-                    'barCode' => $barCode,
-                    'barCodeType' => $barCodeType,
-                    'classificationCode' => $this->fetchClassificationCode($stock['code'] ?? ''),
-                    'measureUnit' => $stock['measureUnit'] ?? '',
+                    'name' => (string)$stock['name'] ?? '',
+                    'taxProductCode' => (string)$taxProductCode,
+                    'barCode' => (string)$barCode,
+                    'barCodeType' => (string)$barCodeType,
+                    'classificationCode' => (string)$this->fetchClassificationCode($stock['code'] ?? ''),
+                    'measureUnit' => (string)$stock['measureUnit'] ?? '',
                     'qty' => (int)((float)($stock['qty'] ?? 1)),
                     'unitPrice' => (float)($stock['unitPrice'] ?? 0),
-                    'totalAmount' => $totalAmount,
-                    'totalVAT' => $vatAmount,
-                    'totalCityTax' => $cityTaxAmount,
-                    'taxType' => $taxType
+                    'totalAmount' => (float)$totalAmount,
+                    'totalVAT' => (float)$vatAmount,
+                    'totalCityTax' => (float)$cityTaxAmount,
+                    'taxType' => (string)$taxType
                 ];
                 
                 $itemMerchantTin = isset($groupBill['group_tin']) && !empty($groupBill['group_tin']) 
@@ -499,7 +499,7 @@ class PutCustomController extends BaseController {
                 
                 if (!isset($merchantItems[$itemMerchantTin])) {
                     $merchantItems[$itemMerchantTin] = [
-                        'items' => [],
+                        'items' => [$item],
                         'totalAmount' => 0,
                         'totalVAT' => 0,
                         'totalCityTax' => 0,
@@ -520,8 +520,8 @@ class PutCustomController extends BaseController {
                     'taxType' => 'VAT_ABLE',
                     'merchantTin' => (string)$merchantTin,
                     'merchantSubName' => $data['merchantSubName'],
-                    'totalVAT' => $data['totalVAT'],
-                    'totalCityTax' => $data['totalCityTax'],
+                    'totalVAT' => (float)$data['totalVAT'],
+                    'totalCityTax' => (float)$data['totalCityTax'],
                     'items' => $data['items']
                 ];
             }
@@ -531,12 +531,12 @@ class PutCustomController extends BaseController {
             $totalAmount = array_sum(array_column($receipts, 'totalAmount'));
             
             $result = [
-                'totalAmount' => $totalAmount,
-                'totalVAT' => $totalVat,
-                'totalCityTax' => $totalCityTax,
+                'totalAmount' => (float)$totalAmount,
+                'totalVAT' => (float)$totalVat,
+                'totalCityTax' => (float)$totalCityTax,
                 'districtCode' => $formattedDistrictCode,
-                'merchantTin' => $merchantTin,
-                'merchantName' => $merchantName,
+                'merchantTin' => (string)$merchantTin,
+                'merchantName' => (string)$merchantName,
                 'branchNo' => $branchNo,
                 'customerTin' => $customerTin ? $customerTin : ($originalData['customerNo'] ?? ''),
                 'type' => $receiptType,
