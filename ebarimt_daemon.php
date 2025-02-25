@@ -81,7 +81,7 @@ class Database {
         try {
             $this->db = new Medoo([
                 'type' => 'mysql',
-                'host' => '10.10.90.234',
+                'host' => '10.10.90.231',
                 'database' => 'ebarimt3_db',
                 'username' => 'ebarimt_user',
                 'password' => 'Ebarimt_2022.',
@@ -367,11 +367,15 @@ class SendDataHandler extends BaseController {
     
     public function sendDataWithLogExec(string $districtCode, string $number): array {
         try {
+            $this->appLogger->log(Logger::INFO, "Send data with log exec");
+            
             $url = str_replace(
                 '12345', 
                 $districtCode, 
                 Config::$settings['docker_url']
             ) . "send?number=" . $number;
+            
+            $this->appLogger->log(Logger::INFO, "URL: " . $url);
             
             $client = new \GuzzleHttp\Client();
             $response = $client->get(
@@ -382,7 +386,10 @@ class SendDataHandler extends BaseController {
                 ]
             );
             
-            return json_decode($response->getBody(), true);
+            $result = json_decode($response->getBody(), true);
+            $this->appLogger->log(Logger::INFO, "Response: " . json_encode($result));
+            
+            return $result;
             
         } catch (\Exception $e) {
             $this->appLogger->log(Logger::ERROR, 'Failed to send data: ' . $e->getMessage());
@@ -1073,6 +1080,14 @@ $router->addRoute('GET', '/api/getInformation', [new GetInformationController(),
 $router->addRoute('POST', '/{district_code}/api/', [new PutCustomController(), 'handle']);
 $router->addRoute('GET', '/{district_code}/send', [new SendDataHandler(), 'handle']);
 $router->addRoute('GET', '/check_reg_no', [new CheckRegnoHandler(), 'handle']);
+$router->addRoute('GET', '/static/{file}', function(Request $request, $file) {
+    $staticPath = __DIR__ . '/static/' . $file;
+    if (file_exists($staticPath)) {
+        $mimeType = mime_content_type($staticPath);
+        return new Response(200, ['Content-Type' => $mimeType], file_get_contents($staticPath));
+    }
+    return new Response(404, [], 'File not found');
+});
 
 $errorHandler = new ErrorHandler();
 $router->setErrorHandler($errorHandler);
