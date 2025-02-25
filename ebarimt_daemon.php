@@ -101,7 +101,7 @@ class Database {
     private function initializeTables() {
         try {
             $queries = [
-                "CREATE TABLE connection_info (
+                "CREATE TABLE IF NOT EXISTS connection_info (
                     port INT NOT NULL DEFAULT 1,
                     lottery_count INT NOT NULL DEFAULT 0,
                     is_working BOOLEAN NOT NULL DEFAULT FALSE,
@@ -111,14 +111,14 @@ class Database {
                     updated_time DATETIME NOT NULL DEFAULT NOW(),
                     merchant_in VARCHAR(255) NOT NULL DEFAULT ''
                 )",
-                "CREATE TABLE category (
+                "CREATE TABLE IF NOT EXISTS category (
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     bgf_code VARCHAR(255) NOT NULL UNIQUE,
                     ebarimt_code VARCHAR(255) NOT NULL DEFAULT '24',
                     company_reg VARCHAR(255) NOT NULL DEFAULT '',
                     percent FLOAT NOT NULL DEFAULT 0.0
                 )",
-                "CREATE TABLE group_bill (
+                "CREATE TABLE IF NOT EXISTS group_bill (
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     bar_code VARCHAR(255) NULL,
                     group_tin VARCHAR(255) NULL,
