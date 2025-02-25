@@ -222,10 +222,7 @@ class PutCustomController extends BaseController {
             
             $preparedData = $this->prepareData($districtCode, $data, $port);
             
-            $this->appLogger->log(Logger::INFO, '--------- --------- IN --------- ---------', [
-                'district_code' => $districtCode,
-                'prepared_data' => json_encode($preparedData, JSON_UNESCAPED_UNICODE)
-            ]);
+            $this->appLogger->log(Logger::INFO, '--------- --------- IN --------- ---------', []);
             
             $url = str_replace('12345', (string)$port, Config::$settings['docker_url']) . 'rest/receipt';
             
