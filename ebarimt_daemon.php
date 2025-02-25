@@ -213,55 +213,201 @@ class PutCustomController extends BaseController {
 
     private function generateEbarimt(string $districtCode, array $data, int $port): Response {
         try {
+            $transID = $data['transID'] ?? '';
+            
+            $this->appLogger->log(Logger::INFO, '--------- --------- Original input --------- ---------', [
+                'call_counter' => uniqid(),
+                'data' => json_encode($data, JSON_UNESCAPED_UNICODE)
+            ]);
+            
             $preparedData = $this->prepareData($districtCode, $data, $port);
+            
+            $this->appLogger->log(Logger::INFO, '--------- --------- IN --------- ---------', [
+                'district_code' => $districtCode,
+                'prepared_data' => json_encode($preparedData, JSON_UNESCAPED_UNICODE)
+            ]);
+            
             $url = str_replace('12345', (string)$port, Config::$settings['docker_url']) . 'rest/receipt';
-
-            $this->appLogger->log(Logger::DEBUG, 'Request Payload', ['payload' => json_encode($preparedData, JSON_PRETTY_PRINT)]);
-
+            
             $client = new \GuzzleHttp\Client();
             $response = $client->post($url, [
                 'json' => $preparedData,
                 'timeout' => Config::$settings['request_timeout']
             ]);
-
+            
             $responseData = json_decode($response->getBody(), true);
-            $this->appLogger->log(\Monolog\Logger::INFO, 'Ebarimt response', ['response' => $responseData]);
-
+            
+            $loggableResponseData = $responseData;
+            if (isset($loggableResponseData['qrData'])) {
+                $loggableResponseData['qrData'] = '***HIDDEN***';
+            }
+            
+            $this->appLogger->log(Logger::INFO, '--------- --------- OUT --------- ---------', [
+                'response' => json_encode($loggableResponseData, JSON_UNESCAPED_UNICODE)
+            ]);
+            
+            $dataId = $responseData['id'] ?? '';
+            $lottery = $responseData['lottery'] ?? '';
+            $qrdata = $responseData['qrData'] ?? '';
+            $totalAmount = $responseData['totalAmount'] ?? 0;
+            
+            $first10DataId = substr($dataId, 0, 10);
+            $subBillId = null;
+            $subBillName = null;
+            $subBillAmount = 0;
+            
+            foreach ($responseData['receipts'] ?? [] as $receipt) {
+                $receiptId = $receipt['id'] ?? '';
+                if (substr($receiptId, 0, 10) === $first10DataId) {
+                    $subBillId = $receiptId;
+                    $subBillName = $this->fetchMerchantName($receipt['merchantTin'] ?? '', $port);
+                    $subBillAmount = $receipt['totalAmount'] ?? 0;
+                    break;
+                }
+            }
+            
             return $this->json([
-                'transID' => $data['transID'] ?? '',
-                'amount' => $responseData['totalAmount'] ?? 0,
-                'billId' => $responseData['id'] ?? '',
-                'lottery' => $responseData['lottery'] ?? '',
-                'qrData' => $responseData['qrData'] ?? '',
+                'transID' => $transID,
+                'amount' => $totalAmount,
+                'billId' => $dataId,
+                'subBillId' => $subBillId,
+                'subBillName' => $subBillName,
+                'subBillAmount' => $subBillAmount,
+                'lottery' => $lottery,
+                'qrData' => $qrdata,
                 'success' => $response->getStatusCode() === 200
             ]);
         } catch (\Exception $e) {
-            $this->appLogger->log(\Monolog\Logger::ERROR, 'Ebarimt generation failed', ['error' => $e->getMessage()]);
-            return $this->json(['error' => $e->getMessage()], 500);
+            $this->appLogger->log(Logger::ERROR, 'Failed to generate ebarimt', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return $this->json(['error' => $e->getMessage(), 'success' => false], 500);
         }
     }
-}
 
+    private function returnEbarimt(array $data, int $port): Response {
+        $this->appLogger->log(Logger::INFO, '========================RETURN BILL========================', [
+            'call_counter' => uniqid(),
+            'payload' => json_encode($data, JSON_UNESCAPED_UNICODE)
+        ]);
+        
+        $returnBillId = $data['returnBillId'] ?? '';
+        if (empty($returnBillId)) {
+            return $this->json(['error' => 'Missing returnBillId parameter'], 400);
+        }
+        
+        $dbSuffix = substr((string)$port, -3);
+        $dbPath = "/opt/sites/env/ebarimt-3.0/vatps_00{$dbSuffix}.db";
+        
+        if (!file_exists($dbPath)) {
+            $this->appLogger->log(Logger::ERROR, "Database not found", ['db_path' => $dbPath]);
+            return $this->json(['error' => "Database not found at {$dbPath}"], 404);
+        }
+        
+        try {
+            $pdo = new \PDO("sqlite:{$dbPath}");
+            $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+            
+            $stmt = $pdo->prepare("SELECT check_date FROM checkreceipt WHERE receipt_id = ?");
+            $stmt->execute([$returnBillId]);
+            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+            
+            if ($row) {
+                $createddate = $row['check_date'];
+                if (preg_match('/(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})/', $createddate, $matches)) {
+                    $formattedDatetime = $matches[1];
+                    $data['date'] = $formattedDatetime;
+                    $this->appLogger->log(Logger::INFO, "Updated payload with date", ['date' => $formattedDatetime]);
+                } else {
+                    $this->appLogger->log(Logger::WARNING, "Invalid datetime format", ['createddate' => $createddate]);
+                    $data['date'] = null;
+                }
+            } else {
+                $this->appLogger->log(Logger::WARNING, "No matching returnBillId found in the database", 
+                    ['id' => $returnBillId]);
+                $data['date'] = null;
+            }
+        } catch (\PDOException $e) {
+            $this->appLogger->log(Logger::ERROR, "SQLite error", [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return $this->json(['error' => "SQLite error: {$e->getMessage()}"], 500);
+        }
+        
+        $url = str_replace('12345', (string)$port, Config::$settings['docker_url']) . 'rest/receipt';
+        
+        $payload = [
+            'id' => $returnBillId,
+            'date' => $data['date'] ?? ''
+        ];
+        
+        $this->appLogger->log(Logger::INFO, "Final payload for DELETE request", ['payload' => json_encode($payload)]);
+        
+        try {
+            $client = new \GuzzleHttp\Client();
+            $response = $client->delete($url, [
+                'json' => $payload,
+                'headers' => ['Content-Type' => 'application/json'],
+                'timeout' => Config::$settings['request_timeout']
+            ]);
+            
+            $this->appLogger->log(Logger::INFO, "Delete response status code", ['status' => $response->getStatusCode()]);
+            
+            if (in_array($response->getStatusCode(), [200, 204])) {
+                $message = "Receipt deleted successfully";
+                if ($response->getStatusCode() === 200 && $response->getBody()->getSize() > 0) {
+                    try {
+                        $responseData = json_decode($response->getBody(), true);
+                        $message = $responseData['message'] ?? $message;
+                    } catch (\Exception $e) {
+                        $this->appLogger->log(Logger::ERROR, "Received non-JSON response with status 200");
+                    }
+                }
+                $this->appLogger->log(Logger::INFO, $message);
+                return $this->json(['message' => $message]);
+            } else {
+                $responseBody = (string)$response->getBody();
+                $responseData = json_decode($responseBody, true) ?: [];
+                $message = $responseData['message'] ?? "Status code: {$response->getStatusCode()}";
+                
+                $this->appLogger->log(Logger::ERROR, "Failed to delete receipt", [
+                    'status' => $response->getStatusCode(),
+                    'message' => $message
+                ]);
+                
+                return $this->json([
+                    'error' => 'Failed to delete receipt', 
+                    'status' => $response->getStatusCode(),
+                    'message' => $message
+                ], 400);
+            }
+        } catch (\Exception $e) {
+            $this->appLogger->log(Logger::ERROR, "Exception during DELETE request", [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return $this->json(['error' => "Exception during DELETE request: {$e->getMessage()}"], 500);
+        }
+    }
 
     private function prepareData(string $districtCode, array $originalData, int $port): array {
         try {
             $billType = $originalData['billType'] ?? '';
-            $receiptType = match($billType) {
-                '1' => 'B2C_RECEIPT',
-                '3' => 'B2B_RECEIPT',
-                default => 'B2B_RECEIPT'
-            };
-    
+            $receiptType = $billType === '1' ? 'B2C_RECEIPT' : 'B2B_RECEIPT';
+            
             $merchantTin = $this->fetchMerchantTin($port);
             $merchantName = $this->fetchMerchantName($merchantTin, $port);
-    
-            $formattedDistrictCode = strlen($districtCode) === 4 
-                ? $districtCode 
-                : $districtCode . '01';
-            $branchNo = strlen($districtCode) === 4 
-                ? substr($districtCode, 2) 
-                : $districtCode;
-    
+            
+            if (strlen($districtCode) === 4) {
+                $formattedDistrictCode = $districtCode;
+                $branchNo = substr($districtCode, 2);
+            } else {
+                $formattedDistrictCode = $districtCode . '01';
+                $branchNo = $districtCode;
+            }
+            
             $customerNo = $originalData['customerNo'] ?? '';
             $customerTin = '';
             if ($customerNo) {
@@ -271,29 +417,70 @@ class PutCustomController extends BaseController {
                         'timeout' => Config::$settings['request_timeout']
                     ]);
                     $result = json_decode($response->getBody(), true);
-                    $customerTin = $result['data'] ?? $customerNo;
+                    $customerTin = $result['data'] ?? '';
                 } catch (\Exception $e) {
-                    $this->appLogger->log(\Monolog\Logger::ERROR, "Failed to fetch TIN for customerNo {$customerNo}: " . $e->getMessage());
-                    $customerTin = $customerNo;
+                    $this->appLogger->log(\Monolog\Logger::ERROR, 
+                        "Failed to fetch TIN for customerNo {$customerNo}: " . $e->getMessage());
+                    $customerTin = '';
                 }
             }
-    
-            $receipts = [];
+            
+            $groupBills = [];
+            try {
+                $groupBillsData = $this->db->select('group_bill', [
+                    'bar_code',
+                    'group_tin',
+                    'taxProductCode'
+                ]);
+                
+                foreach ($groupBillsData as $gb) {
+                    if (!empty($gb['bar_code'])) {
+                        $groupBills[$gb['bar_code']] = $gb;
+                    }
+                }
+            } catch (\Exception $e) {
+                $this->appLogger->log(\Monolog\Logger::ERROR, 
+                    'Failed to fetch group bills: ' . $e->getMessage());
+            }
+            
+            $merchantItems = [];
+            $totalOriginalAmount = 0;
+            
             foreach ($originalData['stocks'] ?? [] as $stock) {
                 $totalAmount = (float)($stock['totalAmount'] ?? 0);
+                $totalOriginalAmount += $totalAmount;
                 $cityTax = (float)($stock['cityTax'] ?? 0);
                 
-                $taxType = 'VAT_ABLE';
-                $vatAmount = $totalAmount > 0 ? ($cityTax > 0 ? $totalAmount / 11.2 : $totalAmount / 11) : 0;
-                $cityTaxAmount = $cityTax > 0 ? $vatAmount * 0.2 : 0;
-    
                 $barCode = $stock['barCode'] ?? '';
-                $barCodeType = strlen($barCode) === 13 ? 'GS1' : 'UNDEFINED';
-    
+                $groupBill = $groupBills[$barCode] ?? [];
+                $taxProductCode = isset($groupBill['taxProductCode']) ? (string)$groupBill['taxProductCode'] : '';
+                
+                $taxType = 'VAT_ABLE';
+                $vatAmount = 0;
+                $cityTaxAmount = 0;
+                
+                if (!empty($groupBill)) {
+                    $taxType = 'VAT_ZERO';
+                    $taxProductCode = '447';
+                } elseif ($totalAmount > 0) {
+                    if ($cityTax > 0) {
+                        $vatAmount = $totalAmount / 11.2;
+                        $cityTaxAmount = $vatAmount * 0.2;
+                    } else {
+                        $vatAmount = $totalAmount / 11;
+                    }
+                }
+                
+                $barCodeType = 'UNDEFINED';
+                if (strlen($barCode) === 13) {
+                    $barCodeType = 'GS1';
+                } elseif (in_array($barCode, ['6900456387254', '6757990902668'])) {
+                    $barCodeType = 'UNDEFINED';
+                }
+                
                 $item = [
                     'name' => $stock['name'] ?? '',
-                    #'taxProductCode' => $this->fetchTaxProductCode($stock['code'] ?? ''),
-                    'taxProductCode' => '',
+                    'taxProductCode' => $taxProductCode,
                     'barCode' => $barCode,
                     'barCodeType' => $barCodeType,
                     'classificationCode' => $this->fetchClassificationCode($stock['code'] ?? ''),
@@ -301,74 +488,94 @@ class PutCustomController extends BaseController {
                     'qty' => (int)((float)($stock['qty'] ?? 1)),
                     'unitPrice' => (float)($stock['unitPrice'] ?? 0),
                     'totalAmount' => $totalAmount,
-                    'totalVAT' => round($vatAmount, 2),
-                    'totalCityTax' => round($cityTaxAmount, 2),
+                    'totalVAT' => $vatAmount,
+                    'totalCityTax' => $cityTaxAmount,
                     'taxType' => $taxType
                 ];
-    
-                $receipts = [[
-                    'totalAmount' => $totalAmount,
-                    'taxType' => $taxType,
-                    'merchantTin' => $merchantTin,
-                    'merchantName' => $merchantName,
-                    'totalVAT' => round($vatAmount, 2),
-                    'totalCityTax' => round($cityTaxAmount, 2),
-                    'items' => [$item]
-                ]];
+                
+                $itemMerchantTin = isset($groupBill['group_tin']) && !empty($groupBill['group_tin']) 
+                    ? $groupBill['group_tin'] 
+                    : $merchantTin;
+                
+                if (!isset($merchantItems[$itemMerchantTin])) {
+                    $merchantItems[$itemMerchantTin] = [
+                        'items' => [],
+                        'totalAmount' => 0,
+                        'totalVAT' => 0,
+                        'totalCityTax' => 0,
+                        'merchantSubName' => $this->fetchSubMerchantName($itemMerchantTin, $port)
+                    ];
+                }
+                
+                $merchantItems[$itemMerchantTin]['items'][] = $item;
+                $merchantItems[$itemMerchantTin]['totalAmount'] += $totalAmount;
+                $merchantItems[$itemMerchantTin]['totalVAT'] += $vatAmount;
+                $merchantItems[$itemMerchantTin]['totalCityTax'] += $cityTaxAmount;
             }
-    
-            $totalAmount = array_sum(array_column($receipts, 'totalAmount'));
+            
+            $receipts = [];
+            foreach ($merchantItems as $tin => $data) {
+                $receipts[] = [
+                    'totalAmount' => $data['totalAmount'],
+                    'taxType' => 'VAT_ABLE',
+                    'merchantTin' => $tin,
+                    'merchantSubName' => $data['merchantSubName'],
+                    'totalVAT' => $data['totalVAT'],
+                    'totalCityTax' => $data['totalCityTax'],
+                    'items' => $data['items']
+                ];
+            }
+            
             $totalVat = array_sum(array_column($receipts, 'totalVAT'));
             $totalCityTax = array_sum(array_column($receipts, 'totalCityTax'));
-    
+            $totalAmount = array_sum(array_column($receipts, 'totalAmount'));
+            
             $result = [
                 'totalAmount' => $totalAmount,
-                'totalVAT' => round($totalVat, 2),
-                'totalCityTax' => round($totalCityTax, 2),
+                'totalVAT' => $totalVat,
+                'totalCityTax' => $totalCityTax,
                 'districtCode' => $formattedDistrictCode,
                 'merchantTin' => $merchantTin,
                 'merchantName' => $merchantName,
                 'branchNo' => $branchNo,
-                'customerTin' => $customerTin,
+                'customerTin' => $customerTin ? $customerTin : ($originalData['customerNo'] ?? ''),
                 'type' => $receiptType,
                 'receipts' => $receipts,
                 'payments' => []
             ];
-    
+            
             $nonCashAmount = (float)($originalData['nonCashAmount'] ?? 0);
             $cashAmount = (float)($originalData['cashAmount'] ?? 0);
-    
-            if ($nonCashAmount > 0) {
+            
+            if ($nonCashAmount > 0 && $cashAmount > 0) {
                 $result['payments'][] = [
                     'status' => 'PAID',
                     'code' => 'PAYMENT_CARD',
-                    'paidAmount' => round($nonCashAmount, 2)
+                    'paidAmount' => $nonCashAmount
                 ];
-            }
-            if ($cashAmount > 0) {
                 $result['payments'][] = [
                     'status' => 'PAID',
                     'code' => 'CASH',
-                    'paidAmount' => round($cashAmount, 2)
+                    'paidAmount' => $cashAmount
+                ];
+            } elseif ($nonCashAmount > 0) {
+                $result['payments'][] = [
+                    'status' => 'PAID',
+                    'code' => 'PAYMENT_CARD',
+                    'paidAmount' => $nonCashAmount
+                ];
+            } elseif ($cashAmount > 0) {
+                $result['payments'][] = [
+                    'status' => 'PAID',
+                    'code' => 'CASH',
+                    'paidAmount' => $cashAmount
                 ];
             }
-    
+            
             return $result;
         } catch (\Exception $e) {
             $this->appLogger->log(\Monolog\Logger::ERROR, 'Error preparing data: ' . $e->getMessage());
             throw $e;
-        }
-    }
-    
-    private function fetchTaxProductCode(string $code): string {
-        try {
-            $result = $this->db->get('tax_products', 'code', [
-                'item_code' => $code
-            ]);
-            return $result ?: '447';
-        } catch (\Exception $e) {
-            $this->appLogger->log(\Monolog\Logger::ERROR, 'Failed to fetch tax product code: ' . $e->getMessage());
-            return '447';
         }
     }
 
@@ -380,10 +587,9 @@ class PutCustomController extends BaseController {
             return $result ?: Config::$settings['company_merchant_tin'];
         } catch (\Exception $e) {
             $this->appLogger->log(\Monolog\Logger::ERROR, 'Database access failed: ' . $e->getMessage());
-            return '6215900';
+            return Config::$settings['company_merchant_tin'];
         }
     }
-
 
     private function fetchMerchantName(string $merchantTin, int $port): string {
         try {
@@ -432,7 +638,7 @@ class PutCustomController extends BaseController {
             ]);
             return $result ?: '6215900';
         } catch (\Exception $e) {
-            $this->logger->log(Logger::ERROR, 'Database access failed: ' . $e->getMessage());
+            $this->appLogger->log(\Monolog\Logger::ERROR, 'Database access failed: ' . $e->getMessage());
             return '6215900';
         }
     }
