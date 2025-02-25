@@ -211,65 +211,37 @@ class PutCustomController extends BaseController {
         return $this->json(['error' => 'Invalid action'], 400);
     }
 
+    private function generateEbarimt(string $districtCode, array $data, int $port): Response {
+        try {
+            $preparedData = $this->prepareData($districtCode, $data, $port);
+            $url = str_replace('12345', (string)$port, Config::$settings['docker_url']) . 'rest/receipt';
 
-    class PutCustomController extends BaseController {
-        public function handle(Request $request, string $districtCode): Response {
-            if (!$this->checkIp($request)) {
-                return $this->json(['message' => 'Access denied'], 403);
-            }
-    
-            $action = $request->get('store');
-            if ($action === null) {
-                return $this->json(['error' => 'Store parameter is required'], 400);
-            }
-    
-            $store = rtrim(rtrim($action, 'put'), 'return');
-            $port = (int)('9' . substr($store, -3));
-    
-            $requestData = json_decode($request->rawBody(), true);
-            if (json_last_error() !== JSON_ERROR_NONE) {
-                return $this->json(['error' => 'Invalid JSON data'], 400);
-            }
-    
-            if (strpos($action, 'put') !== false) {
-                return $this->generateEbarimt($districtCode, $requestData, $port);
-            } elseif (strpos($action, 'return') !== false) {
-                return $this->returnEbarimt($requestData, $port);
-            }
-    
-            return $this->json(['error' => 'Invalid action'], 400);
-        }
-    
-        private function generateEbarimt(string $districtCode, array $data, int $port): Response {
-            try {
-                $preparedData = $this->prepareData($districtCode, $data, $port);
-                $url = str_replace('12345', (string)$port, Config::$settings['docker_url']) . 'rest/receipt';
-    
-                $this->appLogger->log(Logger::DEBUG, 'Request Payload', ['payload' => json_encode($preparedData, JSON_PRETTY_PRINT)]);
-    
-                $client = new \GuzzleHttp\Client();
-                $response = $client->post($url, [
-                    'json' => $preparedData,
-                    'timeout' => Config::$settings['request_timeout']
-                ]);
-    
-                $responseData = json_decode($response->getBody(), true);
-                $this->appLogger->log(\Monolog\Logger::INFO, 'Ebarimt response', ['response' => $responseData]);
-    
-                return $this->json([
-                    'transID' => $data['transID'] ?? '',
-                    'amount' => $responseData['totalAmount'] ?? 0,
-                    'billId' => $responseData['id'] ?? '',
-                    'lottery' => $responseData['lottery'] ?? '',
-                    'qrData' => $responseData['qrData'] ?? '',
-                    'success' => $response->getStatusCode() === 200
-                ]);
-            } catch (\Exception $e) {
-                $this->appLogger->log(\Monolog\Logger::ERROR, 'Ebarimt generation failed', ['error' => $e->getMessage()]);
-                return $this->json(['error' => $e->getMessage()], 500);
-            }
+            $this->appLogger->log(Logger::DEBUG, 'Request Payload', ['payload' => json_encode($preparedData, JSON_PRETTY_PRINT)]);
+
+            $client = new \GuzzleHttp\Client();
+            $response = $client->post($url, [
+                'json' => $preparedData,
+                'timeout' => Config::$settings['request_timeout']
+            ]);
+
+            $responseData = json_decode($response->getBody(), true);
+            $this->appLogger->log(\Monolog\Logger::INFO, 'Ebarimt response', ['response' => $responseData]);
+
+            return $this->json([
+                'transID' => $data['transID'] ?? '',
+                'amount' => $responseData['totalAmount'] ?? 0,
+                'billId' => $responseData['id'] ?? '',
+                'lottery' => $responseData['lottery'] ?? '',
+                'qrData' => $responseData['qrData'] ?? '',
+                'success' => $response->getStatusCode() === 200
+            ]);
+        } catch (\Exception $e) {
+            $this->appLogger->log(\Monolog\Logger::ERROR, 'Ebarimt generation failed', ['error' => $e->getMessage()]);
+            return $this->json(['error' => $e->getMessage()], 500);
         }
     }
+}
+
 
     private function prepareData(string $districtCode, array $originalData, int $port): array {
         try {
