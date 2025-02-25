@@ -240,44 +240,36 @@ class PutCustomController extends BaseController {
         }
     }
 
-    private function returnEbarimt(array $data, int $port): Response {
+    private function generateEbarimt(string $districtCode, array $data, int $port): Response {
         try {
-            $billId = $data['returnBillId'] ?? '';
-            if (empty($billId)) {
-                return $this->json(['error' => 'Return bill ID is required'], 400);
-            }
-
-            $dbSuffix = substr((string)$port, -3);
-            $dbPath = "/opt/sites/env/ebarimt-3.0/vatps_00{$dbSuffix}.db";
-
-            if (!file_exists($dbPath)) {
-                return $this->json(['error' => 'Database not found'], 404);
-            }
-
-            $pdo = new \PDO("sqlite:{$dbPath}");
-            $stmt = $pdo->prepare("SELECT check_date FROM checkreceipt WHERE receipt_id = ?");
-            $stmt->execute([$billId]);
-            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
-
-            if (!$row) {
-                return $this->json(['error' => 'Receipt not found'], 404);
-            }
-
+            $preparedData = $this->prepareData($districtCode, $data, $port);
             $url = str_replace('12345', (string)$port, Config::$settings['docker_url']) . 'rest/receipt';
+            
+            $this->appLogger->log(Logger::DEBUG, 'Request Payload', ['payload' => json_encode($preparedData, JSON_PRETTY_PRINT)]);
+    
             $client = new \GuzzleHttp\Client();
-            $response = $client->delete($url, [
-                'json' => [
-                    'id' => $billId,
-                    'date' => $row['check_date']
-                ]
+            $response = $client->post($url, [
+                'json' => $preparedData,
+                'timeout' => Config::$settings['request_timeout']
             ]);
-
-            return $this->json(['message' => 'Receipt deleted successfully']);
+    
+            $responseData = json_decode($response->getBody(), true);
+            $this->appLogger->log(\Monolog\Logger::INFO, 'Ebarimt response', ['response' => $responseData]);
+    
+            return $this->json([
+                'transID' => $data['transID'] ?? '',
+                'amount' => $responseData['totalAmount'] ?? 0,
+                'billId' => $responseData['id'] ?? '',
+                'lottery' => $responseData['lottery'] ?? '',
+                'qrData' => $responseData['qrData'] ?? '',
+                'success' => $response->getStatusCode() === 200
+            ]);
         } catch (\Exception $e) {
-            $this->appLogger->log(\Monolog\Logger::ERROR, 'Return bill failed', ['error' => $e->getMessage()]);
+            $this->appLogger->log(\Monolog\Logger::ERROR, 'Ebarimt generation failed', ['error' => $e->getMessage()]);
             return $this->json(['error' => $e->getMessage()], 500);
         }
     }
+    
 
     private function prepareData(string $districtCode, array $originalData, int $port): array {
         try {
