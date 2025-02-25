@@ -323,8 +323,9 @@ class PutCustomController extends BaseController {
     
                 $item = [
                     'name' => $stock['name'] ?? '',
-                    'taxProductCode' => $this->fetchTaxProductCode($stock['code'] ?? ''),
-                    'barCode' => $barCode,
+                    #'taxProductCode' => $this->fetchTaxProductCode($stock['code'] ?? ''),
+		    'taxProductCode' => '',
+		    'barCode' => $barCode,
                     'barCodeType' => $barCodeType,
                     'classificationCode' => $this->fetchClassificationCode($stock['code'] ?? ''),
                     'measureUnit' => $stock['measureUnit'] ?? '',
@@ -647,6 +648,8 @@ class Router {
 
 $worker = new Worker('http://0.0.0.0:' . Config::$settings['port']);
 $worker->count = 24;
+
+$worker->daemonize = false;
 
 $worker->onWorkerStart = function($worker) {
     try {
