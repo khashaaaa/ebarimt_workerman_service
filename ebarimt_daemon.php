@@ -368,7 +368,11 @@ class PutCustomController extends BaseController {
                 $this->appLogger->log(Logger::INFO, $message);
                 return $this->json(['message' => $message]);
             } else {
-                $responseBody = (string)$response->getBody();
+                $responseBody = (string) $response->getBody();
+                $this->appLogger->log(Logger::INFO, 'Full API Response', [
+                    'status' => $response->getStatusCode(),
+                    'body' => $responseBody
+                ]);
                 $responseData = json_decode($responseBody, true) ?: [];
                 $message = $responseData['message'] ?? "Status code: {$response->getStatusCode()}";
                 
@@ -518,7 +522,7 @@ class PutCustomController extends BaseController {
                 $receipts[] = [
                     'totalAmount' => $data['totalAmount'],
                     'taxType' => 'VAT_ABLE',
-                    'merchantTin' => (string)$merchantTin,
+                    'merchantTin' => !empty($merchantTin) ? (string)$merchantTin : Config::$settings['company_merchant_tin'],
                     'merchantSubName' => $data['merchantSubName'],
                     'totalVAT' => (float)$data['totalVAT'],
                     'totalCityTax' => (float)$data['totalCityTax'],
