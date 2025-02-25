@@ -518,7 +518,7 @@ class PutCustomController extends BaseController {
                 $receipts[] = [
                     'totalAmount' => $data['totalAmount'],
                     'taxType' => 'VAT_ABLE',
-                    'merchantTin' => $tin,
+                    'merchantTin' => (string)$merchantTin,
                     'merchantSubName' => $data['merchantSubName'],
                     'totalVAT' => $data['totalVAT'],
                     'totalCityTax' => $data['totalCityTax'],
