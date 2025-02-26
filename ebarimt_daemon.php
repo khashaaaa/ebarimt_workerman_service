@@ -90,7 +90,7 @@ class Database {
             $this->db->query("SELECT 1")->fetch();
             $this->logger->log(Logger::INFO, "MySQL connection established successfully.");
             
-            $this->initializeTables();
+            $this->runMigrations();
             
         } catch (\Exception $e) {
             $this->logger->log(Logger::ERROR, "MySQL connection failed: " . $e->getMessage());
@@ -98,41 +98,14 @@ class Database {
         }
     }
 
-    private function initializeTables() {
+    private function runMigrations() {
         try {
-            $queries = [
-                "CREATE TABLE IF NOT EXISTS connection_info (
-                    port INT NOT NULL DEFAULT 1,
-                    lottery_count INT NOT NULL DEFAULT 0,
-                    is_working BOOLEAN NOT NULL DEFAULT FALSE,
-                    last_sent_date DATETIME NOT NULL DEFAULT NOW(),
-                    pos_id INT NOT NULL DEFAULT 0,
-                    pos_no VARCHAR(255) NOT NULL DEFAULT '45',
-                    updated_time DATETIME NOT NULL DEFAULT NOW(),
-                    merchant_in VARCHAR(255) NOT NULL DEFAULT ''
-                )",
-                "CREATE TABLE IF NOT EXISTS category (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    bgf_code VARCHAR(255) NOT NULL UNIQUE,
-                    ebarimt_code VARCHAR(255) NOT NULL DEFAULT '24',
-                    company_reg VARCHAR(255) NOT NULL DEFAULT '',
-                    percent FLOAT NOT NULL DEFAULT 0.0
-                )",
-                "CREATE TABLE IF NOT EXISTS group_bill (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    bar_code VARCHAR(255) NULL,
-                    group_tin VARCHAR(255) NULL,
-                    taxProductCode VARCHAR(255) NULL
-                )"
-            ];
+            $migration = new Migration($this->db);
+            $migration->run();
 
-            foreach ($queries as $query) {
-                $this->db->query($query);
-            }
-            
-            $this->logger->log(Logger::INFO, "Database tables initialized successfully.");
+            $this->logger->log(Logger::INFO, "Database migrations ran successfully.");
         } catch (\Exception $e) {
-            $this->logger->log(Logger::ERROR, "Failed to initialize tables: " . $e->getMessage());
+            $this->logger->log(Logger::ERROR, "Failed to run migrations: " . $e->getMessage());
             throw $e;
         }
     }
@@ -146,6 +119,52 @@ class Database {
 
     public function getConnection() {
         return $this->db;
+    }
+}
+
+class Migration {
+    private $db;
+
+    public function __construct($db) {
+        $this->db = $db;
+    }
+
+    public function run() {
+        $this->createConnectionInfoTable();
+        $this->createCategoryTable();
+        $this->createGroupBillTable();
+    }
+
+    private function createConnectionInfoTable() {
+        $this->db->query("CREATE TABLE IF NOT EXISTS connection_info (
+            port INT NOT NULL DEFAULT 1,
+            lottery_count INT NOT NULL DEFAULT 0,
+            is_working BOOLEAN NOT NULL DEFAULT FALSE,
+            last_sent_date DATETIME NOT NULL DEFAULT NOW(),
+            pos_id INT NOT NULL DEFAULT 0,
+            pos_no VARCHAR(255) NOT NULL DEFAULT '45',
+            updated_time DATETIME NOT NULL DEFAULT NOW(),
+            merchant_in VARCHAR(255) NOT NULL DEFAULT ''
+        )");
+    }
+
+    private function createCategoryTable() {
+        $this->db->query("CREATE TABLE IF NOT EXISTS category (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            bgf_code VARCHAR(255) NOT NULL UNIQUE,
+            ebarimt_code VARCHAR(255) NOT NULL DEFAULT '24',
+            company_reg VARCHAR(255) NOT NULL DEFAULT '',
+            percent FLOAT NOT NULL DEFAULT 0.0
+        )");
+    }
+
+    private function createGroupBillTable() {
+        $this->db->query("CREATE TABLE IF NOT EXISTS group_bill (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            bar_code VARCHAR(255) NULL,
+            group_tin VARCHAR(255) NULL,
+            taxProductCode VARCHAR(255) NULL
+        )");
     }
 }
 
@@ -184,7 +203,14 @@ class MainController extends BaseController {
 }
 
 class PutCustomController extends BaseController {
+    private $requestId;
+    private $instanceCount = 3;
+    private $callCounter = 0;
+
     public function handle(Request $request, string $districtCode): Response {
+        $this->requestId = uniqid();
+        $this->callCounter++;
+
         if (!$this->checkIp($request)) {
             return $this->json(['message' => 'Access denied'], 403);
         }
@@ -216,7 +242,7 @@ class PutCustomController extends BaseController {
             $transID = $data['transID'] ?? '';
             
             $this->appLogger->log(Logger::INFO, '--------- --------- Original input --------- ---------', [
-                'call_counter' => uniqid(),
+                'call_counter' => $this->callCounter,
                 'data' => json_encode($data, JSON_UNESCAPED_UNICODE)
             ]);
             
@@ -336,7 +362,7 @@ class PutCustomController extends BaseController {
 
     private function returnEbarimt(array $data, int $port): Response {
         $this->appLogger->log(Logger::INFO, '========================RETURN BILL========================', [
-            'call_counter' => uniqid(),
+            'call_counter' => $this->callCounter,
             'payload' => json_encode($data, JSON_UNESCAPED_UNICODE)
         ]);
         
@@ -426,11 +452,11 @@ class PutCustomController extends BaseController {
                 
                 $this->appLogger->log(Logger::ERROR, "Failed to delete receipt", [
                     'status' => $response->getStatusCode(),
-                    'message' => $message
+                    'message' => $message  
                 ]);
                 
                 return $this->json([
-                    'error' => 'Failed to delete receipt', 
+                    'error' => 'Failed to delete receipt',
                     'status' => $response->getStatusCode(),
                     'message' => $message
                 ], 400);
@@ -438,7 +464,7 @@ class PutCustomController extends BaseController {
         } catch (\Exception $e) {
             $this->appLogger->log(Logger::ERROR, "Exception during DELETE request", [
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString()  
             ]);
             return $this->json(['error' => "Exception during DELETE request: {$e->getMessage()}"], 500);
         }
@@ -614,14 +640,14 @@ class PutCustomController extends BaseController {
                 $result['payments'][] = [
                     'status' => 'PAID',
                     'code' => 'PAYMENT_CARD',
-                    'paidAmount' => $nonCashAmount
+                    'paidAmount' => $nonCashAmount  
                 ];
             } elseif ($cashAmount > 0) {
                 $result['payments'][] = [
                     'status' => 'PAID',
                     'code' => 'CASH',
                     'paidAmount' => $cashAmount
-                ];
+                ];  
             }
             
             return $result;
@@ -634,7 +660,7 @@ class PutCustomController extends BaseController {
     private function fetchMerchantTin(int $port): string {
         try {
             $result = $this->db->get('connection_info', 'merchant_in', [
-                'port' => $port
+                'port' => $port  
             ]);
             return $result ?: Config::$settings['company_merchant_tin'];
         } catch (\Exception $e) {

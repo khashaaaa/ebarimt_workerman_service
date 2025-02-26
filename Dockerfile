@@ -45,11 +45,11 @@ ENTRYPOINT ["/app/entrypoint.sh"]
 # COPY . /app
 # COPY entrypoint.sh /app
 # RUN chmod +x /app/00001/PosService
-# # RUN chmod +x /app/00002/PosService
-# # RUN chmod +x /app/00003/PosService
+# RUN chmod +x /app/00002/PosService
+# RUN chmod +x /app/00003/PosService
 # RUN chmod +x /app/entrypoint.sh
 # ENTRYPOINT ["/app/entrypoint.sh"]
 
-# # RUN chmod +x /app/entrypoint.sh && \
-# #     for i in $(seq -f "%05g" 1 450); do chmod +x /app/${i}/PosService; done
-# # ENTRYPOINT ["/app/entrypoint.sh"]
+# RUN chmod +x /app/entrypoint.sh && \
+#     for i in $(seq -f "%05g" 1 450); do chmod +x /app/${i}/PosService; done
+# ENTRYPOINT ["/app/entrypoint.sh"]

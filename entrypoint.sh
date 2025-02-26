@@ -464,5 +464,5 @@ wait
 # /app/00450/PosService &
 
 
-# wait
+wait
 
