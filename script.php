@@ -1,7 +1,7 @@
 <?php
 
 define('START_FOLDER', 1);
-define('END_FOLDER', 2);
+define('END_FOLDER', 3);
 define('SOURCE_FOLDER', '00001');
 
 function copyFolder($source, $destination)
