@@ -233,59 +233,104 @@ class PutCustomController extends BaseController {
             ]);
             
             $client = new \GuzzleHttp\Client();
-            $response = $client->post($url, [
-                'json' => $preparedData,
-                'timeout' => Config::$settings['request_timeout']
-            ]);
             
-            $responseData = json_decode($response->getBody(), true);
-            
-            $loggableResponseData = $responseData;
-            if (isset($loggableResponseData['qrData'])) {
-                $loggableResponseData['qrData'] = '***HIDDEN***';
-            }
-            
-            $this->appLogger->log(Logger::INFO, '--------- --------- OUT --------- ---------', [
-                'response' => json_encode($loggableResponseData, JSON_UNESCAPED_UNICODE)
-            ]);
-            
-            $dataId = $responseData['id'] ?? '';
-            $lottery = $responseData['lottery'] ?? '';
-            $qrdata = $responseData['qrData'] ?? '';
-            $totalAmount = $responseData['totalAmount'] ?? 0;
-            
-            $first10DataId = substr($dataId, 0, 10);
-            $subBillId = null;
-            $subBillName = null;
-            $subBillAmount = 0;
-            
-            foreach ($responseData['receipts'] ?? [] as $receipt) {
-                $receiptId = $receipt['id'] ?? '';
-                if (substr($receiptId, 0, 10) === $first10DataId) {
-                    $subBillId = $receiptId;
-                    $subBillName = $this->fetchMerchantName($receipt['merchantTin'] ?? '', $port);
-                    $subBillAmount = $receipt['totalAmount'] ?? 0;
-                    break;
+            try {
+                $response = $client->post($url, [
+                    'json' => $preparedData,
+                    'timeout' => Config::$settings['request_timeout']
+                ]);
+                
+                $responseData = json_decode($response->getBody(), true);
+                
+                $loggableResponseData = $responseData;
+                if (isset($loggableResponseData['qrData'])) {
+                    $loggableResponseData['qrData'] = '***HIDDEN***';
                 }
+                
+                $this->appLogger->log(Logger::INFO, '--------- --------- OUT --------- ---------', [
+                    'response' => json_encode($loggableResponseData, JSON_UNESCAPED_UNICODE)
+                ]);
+                
+                $dataId = $responseData['id'] ?? '';
+                $lottery = $responseData['lottery'] ?? '';
+                $qrdata = $responseData['qrData'] ?? '';
+                $totalAmount = $responseData['totalAmount'] ?? 0;
+                
+                $first10DataId = substr($dataId, 0, 10);
+                $subBillId = null;
+                $subBillName = null;
+                $subBillAmount = 0;
+                
+                foreach ($responseData['receipts'] ?? [] as $receipt) {
+                    $receiptId = $receipt['id'] ?? '';
+                    if (substr($receiptId, 0, 10) === $first10DataId) {
+                        $subBillId = $receiptId;
+                        $subBillName = $this->fetchMerchantName($receipt['merchantTin'] ?? '', $port);
+                        $subBillAmount = $receipt['totalAmount'] ?? 0;
+                        break;
+                    }
+                }
+                
+                return $this->json([
+                    'transID' => $transID,
+                    'amount' => $totalAmount,
+                    'billId' => $dataId,
+                    'subBillId' => $subBillId,
+                    'subBillName' => $subBillName,
+                    'subBillAmount' => $subBillAmount,
+                    'lottery' => $lottery,
+                    'qrData' => $qrdata,
+                    'success' => $response->getStatusCode() === 200
+                ]);
+                
+            } catch (\GuzzleHttp\Exception\ClientException $e) {
+                $response = $e->getResponse();
+                $responseBody = $response ? (string) $response->getBody() : '';
+                $responseJson = json_decode($responseBody, true);
+                
+                $this->appLogger->log(Logger::ERROR, 'Client error when generating ebarimt', [
+                    'error' => $e->getMessage(),
+                    'response_body' => $responseBody,
+                    'status_code' => $response ? $response->getStatusCode() : 'unknown',
+                    'request_url' => $url,
+                    'request_data' => json_encode($preparedData, JSON_UNESCAPED_UNICODE)
+                ]);
+                
+                return $this->json([
+                    'error' => is_array($responseJson) ? $responseJson : $responseBody,
+                    'success' => false,
+                    'transID' => $transID
+                ], 400);
+                
+            } catch (\GuzzleHttp\Exception\ServerException $e) {
+                $response = $e->getResponse();
+                $responseBody = $response ? (string) $response->getBody() : '';
+                
+                $this->appLogger->log(Logger::ERROR, 'Server error when generating ebarimt', [
+                    'error' => $e->getMessage(),
+                    'response_body' => $responseBody,
+                    'status_code' => $response ? $response->getStatusCode() : 'unknown'
+                ]);
+                
+                return $this->json([
+                    'error' => 'Server error occurred',
+                    'details' => json_decode($responseBody, true) ?: $responseBody,
+                    'success' => false,
+                    'transID' => $transID
+                ], 500);
             }
             
-            return $this->json([
-                'transID' => $transID,
-                'amount' => $totalAmount,
-                'billId' => $dataId,
-                'subBillId' => $subBillId,
-                'subBillName' => $subBillName,
-                'subBillAmount' => $subBillAmount,
-                'lottery' => $lottery,
-                'qrData' => $qrdata,
-                'success' => $response->getStatusCode() === 200
-            ]);
         } catch (\Exception $e) {
             $this->appLogger->log(Logger::ERROR, 'Failed to generate ebarimt', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
-            return $this->json(['error' => $e->getMessage(), 'success' => false], 500);
+            
+            return $this->json([
+                'error' => $e->getMessage(),
+                'success' => false,
+                'transID' => $data['transID'] ?? ''
+            ], 500);
         }
     }
 
