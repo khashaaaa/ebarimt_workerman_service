@@ -16,7 +16,7 @@ class Config {
         'port' => 8888,
         'ebarimt_reg_no_url' => 'https://api.ebarimt.mn/api/info/check/getTinInfo?regNo=',
         'ebarimt_tin_url' => 'https://api.ebarimt.mn/api/info/check/getInfo?tin=',
-        'docker_url' => 'http://localhost:12345/',
+        'docker_url' => 'http://10.10.90.234:12345/',
         'company_register' => '0000038',
         'company_merchant_tin' => '77100185651',
         'bank_id' => '15',
