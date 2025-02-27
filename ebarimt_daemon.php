@@ -659,7 +659,9 @@ class PutCustomController extends BaseController {
 
     private function fetchMerchantTin(int $port): string {
         try {
-            $result = $this->db->get('connection_info', 'merchant_in', ['port' => $port]);
+            $result = $this->db->get('connection_info', 'merchant_in', [
+                'port' => $port  
+            ]);
             return $result ?: Config::$settings['company_merchant_tin'];
         } catch (\Exception $e) {
             $this->appLogger->log(\Monolog\Logger::ERROR, 'Database access failed: ' . $e->getMessage());
