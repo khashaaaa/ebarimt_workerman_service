@@ -823,10 +823,11 @@ class GetInformationController extends BaseController {
             'request_id' => $requestId,
             'path' => $request->path(),
             'method' => $request->method(),
-            'headers' => $request->headers->all(),
+            'headers' => $request->headers ? $request->headers->all() : [],
             'query_params' => $request->query(),
             'body' => $request->getContent()
         ]);
+        
 
         $clientIp = $request->header('X-Real-IP') ?: $request->connection->getRemoteIp();
         $this->appLogger->log(\Monolog\Logger::DEBUG, "Client IP", [
