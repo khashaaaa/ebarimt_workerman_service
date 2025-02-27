@@ -722,167 +722,77 @@ class PutCustomController extends BaseController {
     }
 }
 
-class CheckRegnoController extends BaseController {
-    public function handle(Request $request): Response {
-        $requestId = uniqid('req_', true);
-        $this->appLogger->setRequestId($requestId);
-
-        if (!$this->checkIp($request)) {
-            $this->appLogger->log(Logger::WARNING, "Access denied", [
-                'request_id' => $requestId,
-                'ip' => $request->connection->getRemoteIp()
-            ]);
-            return $this->json(['message' => 'Access denied'], 403);
-        }
-
-        $regNo = $request->get('reg_no');
-        if (empty($regNo)) {
-            $this->appLogger->log(Logger::ERROR, "Missing reg_no parameter", [
-                'request_id' => $requestId
-            ]);
-            return $this->json(['error' => 'reg_no parameter is required'], 400);
-        }
-
-        $this->appLogger->log(Logger::INFO, "Processing reg_no request", [
-            'request_id' => $requestId,
-            'reg_no' => $regNo
-        ]);
-
-        try {
-            $client = new \GuzzleHttp\Client();
-            
-            $response = $client->get(Config::$settings['ebarimt_reg_no_url'] . $regNo, [
-                'headers' => [
-                    'Content-Type' => 'application/json;charset=utf-8'
-                ],
-                'timeout' => Config::$settings['request_timeout']
-            ]);
-            
-            $result = json_decode($response->getBody(), true);
-            $this->appLogger->log(Logger::INFO, "First API call response", [
-                'request_id' => $requestId,
-                'response' => json_encode($result, JSON_UNESCAPED_UNICODE)
-            ]);
-            
-            $tin = $result['data'] ?? null;
-            
-            if (!$tin) {
-                $this->appLogger->log(Logger::ERROR, "No TIN found in the response", [
-                    'request_id' => $requestId
-                ]);
-                return $this->json(['error' => 'No TIN found in the response'], 404);
-            }
-            
-            $responseTin = $client->get(Config::$settings['ebarimt_tin_url'] . $tin, [
-                'headers' => [
-                    'Content-Type' => 'application/json;charset=utf-8'
-                ],
-                'timeout' => Config::$settings['request_timeout']
-            ]);
-            
-            $tinResult = json_decode($responseTin->getBody(), true);
-            $this->appLogger->log(Logger::INFO, "Second API call response", [
-                'request_id' => $requestId,
-                'response' => json_encode($tinResult, JSON_UNESCAPED_UNICODE)
-            ]);
-            
-            $data = $tinResult['data'] ?? [];
-            $name = $data['name'] ?? '';
-            
-            return $this->json(['name' => $name]);
-            
-        } catch (\GuzzleHttp\Exception\RequestException $e) {
-            $response = $e->getResponse();
-            $statusCode = $response ? $response->getStatusCode() : 500;
-            $responseBody = $response ? (string) $response->getBody() : '';
-            
-            $this->appLogger->log(Logger::ERROR, "HTTP Error", [
-                'request_id' => $requestId,
-                'error' => $e->getMessage(),
-                'status_code' => $statusCode,
-                'response_body' => $responseBody,
-                'trace' => $e->getTraceAsString()
-            ]);
-            return $this->json(['error' => $e->getMessage()], $statusCode);
-        } catch (\Exception $e) {
-            $this->appLogger->log(Logger::ERROR, "An error occurred", [
-                'request_id' => $requestId,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
-            return $this->json(['error' => 'An internal error occurred'], 500);
-        }
-    }
-}
-
 class GetInformationController extends BaseController {
     public function handle(Request $request): Response {
         $requestId = uniqid('req_', true);
-
-        $this->appLogger->log(\Monolog\Logger::INFO, "GetInformation Request", [
-            'request_id' => $requestId,
-            'path' => $request->path(),
-            'method' => $request->method(),
-            'headers' => $request->headers ? $request->headers->all() : [],
-            'query_params' => $request->query(),
-            'body' => $request->getContent()
-        ]);
-        
-
-        $clientIp = $request->header('X-Real-IP') ?: $request->connection->getRemoteIp();
-        $this->appLogger->log(\Monolog\Logger::DEBUG, "Client IP", [
-            'request_id' => $requestId,
-            'ip' => $clientIp
-        ]);
+        $this->appLogger->log(\Monolog\Logger::INFO, 
+            "GetInformation Request", [
+                'request_id' => $requestId,
+                'path' => $request->path(),
+                'method' => $request->method()
+            ]
+        );
 
         if (!$this->checkIp($request)) {
-            $this->appLogger->log(\Monolog\Logger::WARNING, "Access denied", [
-                'request_id' => $requestId,
-                'ip' => $clientIp
-            ]);
+            $this->appLogger->log(\Monolog\Logger::WARNING, 
+                "Access denied", [
+                    'request_id' => $requestId,
+                    'ip' => $request->header('X-Real-IP') ?: $request->connection->getRemoteIp()
+                ]
+            );
             return $this->json(['message' => 'Access denied'], 403);
         }
 
         $port = $request->get('port');
         if (empty($port)) {
-            $this->appLogger->log(\Monolog\Logger::ERROR, "Missing port parameter", [
-                'request_id' => $requestId
-            ]);
+            $this->appLogger->log(\Monolog\Logger::ERROR, 
+                "Missing port parameter", [
+                    'request_id' => $requestId
+                ]
+            );
             return $this->json(['error' => 'Port parameter is required'], 400);
         }
 
-        $this->appLogger->log(\Monolog\Logger::INFO, "Processing request", [
-            'request_id' => $requestId,
-            'port' => $port
-        ]);
+        $this->appLogger->log(\Monolog\Logger::INFO, 
+            "Processing request", [
+                'request_id' => $requestId,
+                'port' => $port
+            ]
+        );
 
         try {
             $info = $this->saveConnectionInfo($port, $requestId);
             if ($info) {
-                $this->appLogger->log(\Monolog\Logger::INFO, "Request completed successfully", [
-                    'request_id' => $requestId,
-                    'port' => $port
-                ]);
+                $this->appLogger->log(\Monolog\Logger::INFO, 
+                    "Request completed successfully", [
+                        'request_id' => $requestId,
+                        'port' => $port
+                    ]
+                );
                 return new Response(
                     200,
                     ['Content-Type' => 'application/json'],
                     json_encode($info)
                 );
             }
-
-            $this->appLogger->log(\Monolog\Logger::ERROR, "No info returned", [
-                'request_id' => $requestId,
-                'port' => $port
-            ]);
+            
+            $this->appLogger->log(\Monolog\Logger::ERROR, 
+                "No info returned", [
+                    'request_id' => $requestId,
+                    'port' => $port
+                ]
+            );
             return $this->json(['error' => 'Info null']);
-
+            
         } catch (\Exception $e) {
-            $this->appLogger->log(\Monolog\Logger::ERROR, 'Failed to get information: ' . $e->getMessage(), [
-                'request_id' => $requestId,
-                'port' => $port,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
+            $this->appLogger->log(\Monolog\Logger::ERROR, 
+                'Failed to get information: ' . $e->getMessage(), [
+                    'request_id' => $requestId,
+                    'port' => $port,
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString()
+                ]
+            );
             return $this->json(['error' => $e->getMessage()], 500);
         }
     }
@@ -890,12 +800,14 @@ class GetInformationController extends BaseController {
     private function saveConnectionInfo(string $port, string $requestId): ?array {
         try {
             $url = str_replace('12345', $port, Config::$settings['docker_url']) . 'rest/info';
-
-            $this->appLogger->log(\Monolog\Logger::DEBUG, "Constructed URL", [
-                'request_id' => $requestId,
-                'constructed_url' => $url
-            ]);
-
+            
+            $this->appLogger->log(\Monolog\Logger::INFO, 
+                "Fetching info from docker service", [
+                    'request_id' => $requestId,
+                    'url' => $url
+                ]
+            );
+            
             $client = new \GuzzleHttp\Client();
             $response = $client->get($url, [
                 'headers' => [
@@ -904,26 +816,12 @@ class GetInformationController extends BaseController {
                 'timeout' => Config::$settings['request_timeout']
             ]);
 
-            $rawResponse = (string) $response->getBody();
-            $this->appLogger->log(\Monolog\Logger::DEBUG, "Docker Service Response", [
-                'request_id' => $requestId,
-                'response_body' => $rawResponse
-            ]);
-
-            $info = json_decode($rawResponse, true);
-            if (json_last_error() !== JSON_ERROR_NONE) {
-                $this->appLogger->log(\Monolog\Logger::ERROR, "JSON Decode Error", [
-                    'request_id' => $requestId,
-                    'error' => json_last_error_msg(),
-                    'raw_response' => $rawResponse
-                ]);
-                return null;
-            }
-
+            $info = json_decode($response->getBody(), true);
+            
             if (isset($info['lastSentDate']) && $info['lastSentDate'] !== null) {
                 $lastSentDate = \DateTime::createFromFormat('Y-m-d H:i:s', $info['lastSentDate']);
                 $operatorTin = $info['merchants'][0]['tin'] ?? null;
-
+                
                 $data = [
                     'lottery_count' => $info['leftLotteries'] ?? 0,
                     'last_sent_date' => $lastSentDate ? $lastSentDate->format('Y-m-d H:i:s') : null,
@@ -934,31 +832,33 @@ class GetInformationController extends BaseController {
                     'is_working' => true
                 ];
 
-                $exists = $this->db->count('connection_info', ['port' => $port]);
-
-                $this->appLogger->log(\Monolog\Logger::DEBUG, "Database Operation", [
-                    'request_id' => $requestId,
-                    'query' => $exists ? "UPDATE connection_info" : "INSERT INTO connection_info",
-                    'data' => $data
+                $exists = $this->db->count('connection_info', [
+                    'port' => $port
                 ]);
 
                 if (!$exists) {
                     $data['port'] = $port;
                     $this->db->insert('connection_info', $data);
                 } else {
-                    $this->db->update('connection_info', $data, ['port' => $port]);
+                    $this->db->update('connection_info', 
+                        $data,
+                        [
+                            'port' => $port
+                        ]
+                    );
                 }
             }
 
             return $info;
 
         } catch (\Exception $e) {
-            $this->appLogger->log(\Monolog\Logger::ERROR, "Error saving connection info: " . $e->getMessage(), [
-                'request_id' => $requestId,
-                'port' => $port,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
+            $this->appLogger->log(\Monolog\Logger::ERROR, 
+                "Error saving connection info: " . $e->getMessage(), [
+                    'request_id' => $requestId,
+                    'port' => $port,
+                    'error' => $e->getMessage()
+                ]
+            );
             return null;
         }
     }
@@ -1018,7 +918,6 @@ $worker->onWorkerStart = function($worker) {
 
 $router = new Router();
 $router->addRoute('GET', '/', [new MainController(), 'index']);
-$router->addRoute('GET', '/api/checkRegno', [new CheckRegnoController(), 'handle']);
 $router->addRoute('GET', '/api/getInformation', [new GetInformationController(), 'handle']);
 $router->addRoute('POST', '/{district_code}/api/', [new PutCustomController(), 'handle']);
 
