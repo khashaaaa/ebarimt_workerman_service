@@ -8,3 +8,4 @@ workerman.log
 vatps_*.db
 .Dockerfile.swp
 workerman.ebarimt_daemon.php.pid
+ebarimt_daemon.php.swp

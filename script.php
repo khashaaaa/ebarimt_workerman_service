@@ -1,8 +1,27 @@
 <?php
 
-define('START_FOLDER', 1);
-define('END_FOLDER', 3);
+define('START_FOLDER', 2);
+define('END_FOLDER', 450);
+define('BASE_PORT', 9000);
 define('SOURCE_FOLDER', '00001');
+define('INI_FILENAME', 'posapi.ini');
+define('WORKERMAN_SERVICE', 'ebarimt_workerman_service');
+
+function updatePosapiIni($folderPath, $folderName, $portNumber)
+{
+    $iniPath = $folderPath . DIRECTORY_SEPARATOR . INI_FILENAME;
+
+    if (!file_exists($iniPath)) {
+        echo "INI file not found in $folderPath\n";
+        return;
+    }
+
+    $content = file_get_contents($iniPath);
+    $content = str_replace('name=vatps_00001.db', "name=vatps_$folderName.db", $content);
+    $content = str_replace('port=9001', "port=$portNumber", $content);
+
+    file_put_contents($iniPath, $content);
+}
 
 function copyFolder($source, $destination)
 {
@@ -27,39 +46,27 @@ function copyFolder($source, $destination)
             copyFolder($srcFile, $destFile);
         } else {
             copy($srcFile, $destFile);
+            chmod($destFile, 0777);
         }
     }
-}
-
-function updateIniFile($folderName)
-{
-    $iniFilePath = $folderName . DIRECTORY_SEPARATOR . 'posapi.ini';
-
-    if (!file_exists($iniFilePath)) {
-        echo "INI file not found in $folderName\n";
-        return;
-    }
-
-    $iniContent = file_get_contents($iniFilePath);
-
-    $iniContent = preg_replace('/name=vatps_\d{5}\.db/', 'name=vatps_' . $folderName . '.db', $iniContent);
-
-    $newPort = 9000 + (int)$folderName;
-
-    $iniContent = preg_replace('/port=\d{4}/', 'port=' . $newPort, $iniContent);
-
-    file_put_contents($iniFilePath, $iniContent);
 }
 
 for ($i = START_FOLDER; $i <= END_FOLDER; $i++) {
     $folderName = sprintf('%05d', $i);
     $destFolder = $folderName;
+    $portNumber = BASE_PORT + $i;
 
     copyFolder(SOURCE_FOLDER, $destFolder);
-
-    updateIniFile($folderName);
+    updatePosapiIni($destFolder, $folderName, $portNumber);
 
     echo "$folderName: completed\n";
 }
 
+$user = getenv('USER') ?: 'www-data';
+$projectDir = __DIR__;
+$parentDir = dirname($projectDir);
+
+exec("cd $parentDir && sudo chown -R $user:$user " . WORKERMAN_SERVICE);
+
+echo "Ownership updated for " . WORKERMAN_SERVICE . " from outside the project directory.\n";
 echo "All folders have been processed.\n";

@@ -33,19 +33,11 @@
 import os
 import shutil
 
-START_FOLDER = 451
-END_FOLDER = 900
+START_FOLDER = 2
+END_FOLDER = 450
 BASE_PORT = 9000
 SOURCE_FOLDER = '00001'
 INI_FILENAME = 'posapi.ini'
-# DOCKERFILE_NAME = 'Dockerfile'
-# DOCKER_COMPOSE_NAME = 'docker-compose.yaml'
-# ENTRYPOINT_SCRIPT_NAME = 'entrypoint.sh'
-#
-# dockerfile_path = os.path.join(os.getcwd(), DOCKERFILE_NAME)
-# docker_compose_path = os.path.join(os.getcwd(), DOCKER_COMPOSE_NAME)
-# entrypoint_script_path = os.path.join(os.getcwd(), ENTRYPOINT_SCRIPT_NAME)
-
 
 def update_posapi_ini(folder_path, folder_name, port_number):
     ini_path = os.path.join(folder_path, INI_FILENAME)
@@ -64,15 +56,6 @@ for i in range(START_FOLDER, END_FOLDER + 1):
 
     shutil.copytree(SOURCE_FOLDER, dest_folder)
     update_posapi_ini(dest_folder, folder_name, port_number)
-
-    # with open(dockerfile_path, 'a') as file:
-    #     file.write(f'RUN chmod +x /app/{folder_name}/PosService\n')
-    #
-    # with open(docker_compose_path, 'a') as file:
-    #     file.write(f'      - "{port_number}:{port_number}"\n')
-    #
-    # with open(entrypoint_script_path, 'a') as file:
-    #     file.write(f'/app/{folder_name}/PosService &\n')
 
     print(f'{folder_name}: completed')
 
