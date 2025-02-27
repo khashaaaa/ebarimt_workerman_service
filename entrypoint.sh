@@ -1,18 +1,6 @@
 #!/bin/bash
 
 # Start the first service in the background
-# /app/00001/PosService &
-
-# wait
-
-
-# for i in $(seq -f "%05g" 1 3); do
-#    if [ -f "/app/${i}/PosService" ]; then
-#        /app/${i}/PosService &
-#    fi
-# done
-
-# wait
 
 /app/00001/PosService &
 /app/00002/PosService &
@@ -467,4 +455,3 @@
 
 
 wait
-
