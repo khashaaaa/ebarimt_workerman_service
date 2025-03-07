@@ -72,28 +72,47 @@ class Database {
     private static $instance = null;
     private $db;
     private $logger;
+    private $config = [
+        'type' => 'mysql',
+        'host' => '10.10.90.234',
+        'database' => 'ebarimt3_db',
+        'username' => 'ebarimt_user',
+        'password' => 'Ebarimt_2022.',
+        'charset' => 'utf8mb4',
+        'port' => 3306,
+        'options' => [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_PERSISTENT => true,
+            PDO::ATTR_EMULATE_PREPARES => false
+        ]
+    ];
 
     private function __construct() {
         $this->logger = AppLogger::getInstance();
+        $this->connect();
+    }
 
+    private function connect() {
         try {
-            $this->db = new Medoo([
-                'type' => 'mysql',
-                'host' => '10.10.90.234',
-                'database' => 'ebarimt3_db',
-                'username' => 'ebarimt_user',
-                'password' => 'Ebarimt_2022.',
-                'charset' => 'utf8mb4',
-                'port' => 3306
-            ]);
-
+            $this->db = new Medoo($this->config);
             $this->db->query("SELECT 1")->fetch();
             $this->logger->log(Logger::INFO, "MySQL connection established successfully.");
-            
+
             $this->runMigrations();
-            
-        } catch (\Exception $e) {
+
+        } catch (\PDOException $e) {
             $this->logger->log(Logger::ERROR, "MySQL connection failed: " . $e->getMessage());
+            $this->handleReconnect();
+        }
+    }
+
+    private function handleReconnect() {
+        sleep(2); // Wait before retrying
+        try {
+            $this->db = new Medoo($this->config);
+            $this->logger->log(Logger::INFO, "Reconnected to MySQL successfully.");
+        } catch (\PDOException $e) {
+            $this->logger->log(Logger::ERROR, "Reconnection failed: " . $e->getMessage());
             throw $e;
         }
     }
@@ -102,7 +121,6 @@ class Database {
         try {
             $migration = new Migration($this->db);
             $migration->run();
-
             $this->logger->log(Logger::INFO, "Database migrations ran successfully.");
         } catch (\Exception $e) {
             $this->logger->log(Logger::ERROR, "Failed to run migrations: " . $e->getMessage());
@@ -118,6 +136,9 @@ class Database {
     }
 
     public function getConnection() {
+        if ($this->db === null) {
+            $this->connect();
+        }
         return $this->db;
     }
 }
