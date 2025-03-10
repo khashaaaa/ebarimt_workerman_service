@@ -20,7 +20,7 @@ class Config {
     
     private function __construct() {
         $this->settings = [
-            'request_timeout' => 5,
+            'request_timeout' => 15,
             'port' => 8888,
             'ebarimt_reg_no_url' => 'https://api.ebarimt.mn/api/info/check/getTinInfo?regNo=',
             'ebarimt_tin_url' => 'https://api.ebarimt.mn/api/info/check/getInfo?tin=',
@@ -32,9 +32,9 @@ class Config {
             'worker_count' => 32,
             'log_level' => Logger::INFO,
             'cache_ttl' => 300,
-            'max_connections' => 10,
-            'memory_limit' => '128M',
-            'request_limit' => 100,
+            'max_connections' => 30,
+            'memory_limit' => '256M',
+            'request_limit' => 500,
             'db_host' => '10.10.90.234',
             'db_name' => 'ebarimt3_db',
             'db_user' => 'ebarimt_user',
@@ -682,7 +682,7 @@ class PutCustomController extends BaseController {
         
         try {
             $pdo = new \PDO("sqlite:{$dbPath}", null, null, [
-                \PDO::ATTR_TIMEOUT => 2,
+                \PDO::ATTR_TIMEOUT => 5,
                 \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION
             ]);
             
