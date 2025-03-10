@@ -29,7 +29,7 @@ class Config {
             'company_merchant_tin' => '77100185651',
             'bank_id' => '15',
             'ebarimt_group_enabled' => true,
-            'worker_count' => 8,
+            'worker_count' => 32,
             'log_level' => Logger::INFO,
             'cache_ttl' => 300,
             'max_connections' => 10,
